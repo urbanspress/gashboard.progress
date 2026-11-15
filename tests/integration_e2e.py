@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-Gashboard v0.3.0 — 4-Gate Cross-Layer End-to-End Verification Suite.
+Gashboard v1.0.0 — 4-Gate Cross-Layer End-to-End Verification Suite.
 Gate 1: Static GRAB check, canonical `grab format` byte-for-byte parity, template probe, zero-<div> / zero-innerHTML scan.
 Gate 2: Node unit, zero-<div> DOM, Light/Dark WCAG AA >= 4.5:1 & contract suite (`node --test tests/*.test.js`).
 Gate 3: Go loopback SSH & DB inspector bridge (`go build ./...`, `go test -count=1 ./...`, `govulncheck ./...`).
@@ -470,7 +470,7 @@ def gate_3_go_bridge_build_test_vuln():
 
 
 def gate_4_live_6layer_e2e():
-    print("[Gate 4] Running live 6-layer E2E integration (Gashboard v0.3.0 + Namecheap DNS + Auto-HTTPS + Bridge DB + Grabtaculous + grabman + Groxy DNA)...")
+    print("[Gate 4] Running live 6-layer E2E integration (Gashboard v1.0.0 + Namecheap DNS + Auto-HTTPS + Bridge DB + Grabtaculous v1.0.0 + grabman v1.0.0 + Groxy DNA)...")
     assert Path(GRABMAN_BIN).exists(), f"Missing grabman binary at {GRABMAN_BIN}"
     assert Path(GRABTAC_BIN).exists(), f"Missing grabtaculous binary at {GRABTAC_BIN}"
 
@@ -667,7 +667,8 @@ def gate_4_live_6layer_e2e():
             stderr=subprocess.STDOUT,
             text=True,
         )
-        wait_for_health(bridge_url, "gashboard-bridge", bridge_proc, bridge_log_p)
+        bridge_health = wait_for_health(bridge_url, "gashboard-bridge", bridge_proc, bridge_log_p)
+        assert bridge_health.get("version") == "1.0.0", f"Unexpected bridge /_health payload: {bridge_health}"
 
         gash_url = f"http://127.0.0.1:{gash_port}"
         gash_env = os.environ.copy()
@@ -716,6 +717,7 @@ def gate_4_live_6layer_e2e():
         # Fetch HTML UI, check zero <div>, extract CSRF token & asset URLs
         st, _, ui_html = http_request(f"{gash_url}/gashboard")
         assert st == 200
+        assert '<meta name="gashboard-version" content="1.0.0">' in ui_html, f"Expected v1.0.0 meta tag in HTML:\n{ui_html}"
         assert not re.search(r"<\s*/?\s*div\b", ui_html, re.IGNORECASE), "Rendered HTML contains <div>"
         csrf_m = re.search(r'<meta\s+name="gashboard-csrf"\s+content="([^"]+)"', ui_html)
         assert csrf_m, f"Missing gashboard-csrf meta tag in HTML:\n{ui_html}"
@@ -1340,7 +1342,7 @@ def gate_4_live_6layer_e2e():
                 gs = run_cmd(["git", "status", "--short"], cwd=repo)
                 assert gs.stdout.strip() == "", f"Upstream/peer repo {repo} is dirty:\n{gs.stdout}"
 
-        print("  [PASS] Gate 4 live 6-layer cross-stack integration + v0.3.0 Namecheap DNS & Auto-HTTPS Wizard verified (all 7 peer repos clean).")
+        print("  [PASS] Gate 4 live 6-layer cross-stack integration + v1.0.0 Namecheap DNS & Auto-HTTPS Wizard verified (all 7 peer repos clean).")
     except Exception:
         for lp in log_paths:
             if lp.exists():
@@ -1380,7 +1382,7 @@ def main():
     gate_2_unit_dom_wcag_and_contracts()
     gate_3_go_bridge_build_test_vuln()
     gate_4_live_6layer_e2e()
-    print("\nALL 4 GASHBOARD v0.3.0 VERIFICATION GATES PASSED 100%.")
+    print("\nALL 4 GASHBOARD v1.0.0 VERIFICATION GATES PASSED 100%.")
 
 
 if __name__ == "__main__":

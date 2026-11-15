@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-Gashboard v0.3.0 — Cross-Platform Go SSH Sidecar Binary & Release Archive Packager.
+Gashboard v1.0.0 — Cross-Platform Go SSH Sidecar Binary & Release Archive Packager.
 Builds static CGO_ENABLED=0 bridge binaries (`windows/amd64`, `linux/amd64`), verifies the
 walkthrough PDF, creates `dist/gashboard-v<VERSION>-bundle.zip`, and emits `dist/SHA256SUMS.txt`.
 """
@@ -60,7 +60,7 @@ def add_path_to_zip(zf: zipfile.ZipFile, src_path: Path, arc_prefix: str = ""):
 
 def main():
     parser = argparse.ArgumentParser(description="Package Gashboard release binaries, bundle zip, PDF, and SHA256SUMS.")
-    parser.add_argument("--version", default="0.3.0", help="Release version without leading v (e.g. 0.3.0)")
+    parser.add_argument("--version", default="1.0.0", help="Release version without leading v (e.g. 1.0.0)")
     args = parser.parse_args()
     version = args.version.lstrip("v")
 

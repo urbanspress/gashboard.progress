@@ -1,7 +1,7 @@
 # Gashboard Roadmap
 
 **Repositories:** `urbanspress/gashboard.progress` (active development) / `urbanspress/gashboard.stable` (verified releases)  
-**Foundational Baselines:** **GRAB `v1.1.0`**, **Grex JS `v1.0.0`**, **GrabLab CMS `v1.0.1`**, **Grex Theme Builder `v1.0.0`**, **Groxy AI `v1.0.0`**, **`grabman v0.1.0`**, and **Grabtaculous `v0.1.0`**
+**Foundational Baselines:** **GRAB `v1.1.0`**, **Grex JS `v1.0.0`**, **GrabLab CMS `v1.0.1`**, **Grex Theme Builder `v1.0.0`**, **Groxy AI `v1.0.0`**, **`grabman v1.0.0`**, and **Grabtaculous `v1.0.0`**
 
 **Status Labels:**
 - **Specification in Review** — Specification drafted and awaiting explicit project-owner approval before any `.grab`, `.js`, or Go implementation code is written.
@@ -47,8 +47,9 @@ Delivered Scope:
 
 ## `v1.0.0` — Production Freeze, Independent `Orchestrator (Argon)` Multi-Repo Audit & Desktop Launcher Packaging
 
-**Status:** Specification in Review ([`specifications/GASHBOARD-SPEC-100.md`](../specifications/GASHBOARD-SPEC-100.md))
+**Status:** Complete (`v1.0.0` Released — [`specifications/GASHBOARD-SPEC-100.md`](../specifications/GASHBOARD-SPEC-100.md), [`CHANGELOG.md`](../CHANGELOG.md))
 
-Approved-Spec / Review Scope:
-- Completed independent pre-`v1.0.0` multi-repository cross-layer security, pure-`Grex JS v1.0.0` zero-`<div>`/WCAG AA DOM, SSH tunnel, Visual DB Manager, Namecheap DNS/Auto-HTTPS, and `ADR-025c` contract audit; remediated two discovered hardening items (target-binding `approval_token` validation in `src/gashboard.grab` and expanded SSH key/TLS credential segment blocking in `bridge/internal/dbinspect/security.go`) and verified `100%` pass across Gates 1–4 (`specifications/GASHBOARD-SPEC-100.md`).
-- Pending explicit owner approval of `specifications/GASHBOARD-SPEC-100.md`: bump `gashboard` frozen runtime/UI/bridge version strings to `v1.0.0`, generate branded desktop launcher archive & walkthrough PDF, and synchronize `v1.0.0` release on `origin` and `stable` (providing the direct runtime foundation for **Step 6 — Groxy Desk**).
+Delivered Scope:
+- Completed independent pre-`v1.0.0` multi-repository cross-layer security, pure-`Grex JS v1.0.0` zero-`<div>`/WCAG AA DOM, SSH tunnel, Visual DB Manager, Namecheap DNS/Auto-HTTPS, and `ADR-025c` contract audit; remediated two discovered hardening items (target-binding `approval_token` validation in `src/gashboard.grab` and expanded SSH key/TLS credential segment blocking in `bridge/internal/dbinspect/security.go` + `403 GASH-E403` E2E regression test) (`specifications/GASHBOARD-SPEC-100.md`).
+- Froze Gashboard `v1.0.0` across `src/gashboard.grab`, `views/dashboard.grab.html`, `public/gashboard/dashboard.js`, `public/gashboard/api-client.js`, `bridge/cmd/gashboard-bridge/main.go`, and `package.json`, aligned cleanly with `grabman v1.0.0` and `Grabtaculous v1.0.0` while keeping all 5 upstream `v1.x` repositories (`GRAB v1.1.0`, `Grex JS v1.0.0`, `GrabLab CMS v1.0.1`, `Grex Theme Builder v1.0.0`, `Groxy AI v1.0.0`) untouched.
+- Passed all 4 verification gates `100%` (`grab check` + byte-for-byte `grab format` parity, `node --test tests/*.test.js`, `go build`/`go test -count=1`/`govulncheck` with `0` vulnerabilities, and 6-layer `tests/integration_e2e.py`), generated `docs/releases/pdf/Gashboard-v1.0.0-Guide.pdf` + `dist/` packages (`gashboard-ssh-windows-amd64.exe`, `gashboard-ssh-linux-amd64`, `gashboard-v1.0.0-bundle.zip`, `SHA256SUMS.txt`), and synchronized `v1.0.0` on `origin` and `stable` (providing the frozen Step 5 foundation for **Step 6 — Groxy Desk**).

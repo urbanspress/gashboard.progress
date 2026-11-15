@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-Gashboard v0.3.0 — Plain-English Release Guide HTML & PDF Generator.
+Gashboard v1.0.0 — Plain-English Release Guide HTML & PDF Generator.
 Renders `docs/releases/html/Gashboard-v<VERSION>-Guide.html` and prints it to
 `docs/releases/pdf/Gashboard-v<VERSION>-Guide.pdf` using headless Chrome or Edge.
 """
@@ -83,12 +83,12 @@ def build_html(version: str) -> str:
 
   <h2>1. What Is Included in Gashboard v{version}</h2>
   <ul>
-    <li><strong>Namecheap DNS + Auto-HTTPS Wizard (New in v0.3.0):</strong> Save your Namecheap API credentials once into the encrypted local SQLite vault (<code>AES-256-GCM</code>; never shown in plaintext again). Preview and apply <code>A</code>, <code>AAAA</code>, and <code>CNAME</code> updates in 1 click while automatically keeping all existing <code>MX</code>, <code>TXT</code>, <code>SPF</code>, and <code>DKIM</code> email records intact. A live DNS propagation guard blocks Let's Encrypt certificate requests until your domain resolves to your VPS IP—preventing ACME rate-limit lockouts—then configures Caddy, Nginx, or Cloudflare Tunnel through Grabtaculous with 1-click DNS + Edge rollback.</li>
+    <li><strong>Namecheap DNS + Auto-HTTPS Wizard:</strong> Save your Namecheap API credentials once into the encrypted local SQLite vault (<code>AES-256-GCM</code>; never shown in plaintext again). Preview and apply <code>A</code>, <code>AAAA</code>, and <code>CNAME</code> updates in 1 click while automatically keeping all existing <code>MX</code>, <code>TXT</code>, <code>SPF</code>, and <code>DKIM</code> email records intact. A live DNS propagation guard blocks Let's Encrypt certificate requests until your domain resolves to your VPS IP—preventing ACME rate-limit lockouts—then configures Caddy, Nginx, or Cloudflare Tunnel through Grabtaculous <code>v1.0.0</code> with 1-click DNS + Edge rollback.</li>
     <li><strong>Stealth 127.0.0.1 Control Panel (GRAB v1.1.0 + Pure Grex JS v1.0.0):</strong> Refuses public <code>0.0.0.0</code> bindings by default. Contains zero wrapper <code>&lt;div&gt;</code> tags, zero <code>innerHTML</code> writes, 100% WCAG AA accessible contrast, and exact base-10 decimals (<code>ADR-025c</code>).</li>
-    <li><strong>WCAG AA Light/Dark Theme Switcher (New in v0.2.0):</strong> Toggle crisp <strong>Light</strong> or <strong>Dark</strong> appearance in the header using <code>Grex JS</code> <code>createTheme</code> (<code>[data-grex-theme]</code>). Preferences save locally and in SQLite so pages open in your chosen theme immediately without white flash (zero FOUC), while maintaining <code>&gt;= 4.5:1</code> contrast and clear keyboard focus outlines.</li>
-    <li><strong>Built-In phpMyAdmin-Style Visual Database Manager (New in v0.2.0):</strong> Inspect local SQLite files (confined inside <code>--sqlite-root</code>; blocks path traversal with <code>GRAB-E401</code>) or remote PostgreSQL and MariaDB servers strictly inside your encrypted <code>127.0.0.1</code> SSH tunnels—never exposing phpMyAdmin or database ports publicly. Browse tables, columns, indexes, and foreign keys; paginate up to <code>100</code> rows/page with exact <code>ADR-025c</code> base-10 integers/decimals; run read-only <code>SELECT</code>/<code>EXPLAIN</code> queries safely; and export SQL dumps.</li>
-    <li><strong>Safety-Gated Writes &amp; Automatic Pre-Mutation Snapshots (<code>GROXY-SAFE-001</code>):</strong> Any row insert, update, delete, DDL change, or SQL import requires a plain-English impact summary, an automatic <code>Pre-Mutation Snapshot</code> (SHA-256 verified), <code>X-CSRF-Token</code>, and a single-use <code>approval_token</code> (replays blocked with HTTP <code>409</code>)—plus <strong>1-Click Snapshot Restore</strong>.</li>
-    <li><strong>AES-256-GCM Local Vault, 1-Click Marketplace &amp; Site DNA Fleet Rollouts:</strong> Encrypts SSH secrets locally with GRAB <code>use crypto</code>, pins OpenSSH <code>known_hosts</code> fingerprints (<code>GASH-E502</code>), opens up to 8 loopback tunnels, deploys hardened GrabLab CMS + Grex Theme Builder + Groxy AI stacks, and rolls out verified <code>Site DNA</code> bundles with 1-click rollback.</li>
+    <li><strong>WCAG AA Light/Dark Theme Switcher:</strong> Toggle crisp <strong>Light</strong> or <strong>Dark</strong> appearance in the header using <code>Grex JS</code> <code>createTheme</code> (<code>[data-grex-theme]</code>). Preferences save locally and in SQLite so pages open in your chosen theme immediately without white flash (zero FOUC), while maintaining <code>&gt;= 4.5:1</code> contrast and clear keyboard focus outlines.</li>
+    <li><strong>Built-In phpMyAdmin-Style Visual Database Manager:</strong> Inspect local SQLite files (confined inside <code>--sqlite-root</code>; blocks path traversal and SSH/TLS credential paths with <code>GRAB-E401</code> / <code>GASH-E403</code>) or remote PostgreSQL and MariaDB servers strictly inside your encrypted <code>127.0.0.1</code> SSH tunnels—never exposing phpMyAdmin or database ports publicly. Browse tables, columns, indexes, and foreign keys; paginate up to <code>100</code> rows/page with exact <code>ADR-025c</code> base-10 integers/decimals; run read-only <code>SELECT</code>/<code>EXPLAIN</code> queries safely; and export SQL dumps.</li>
+    <li><strong>Safety-Gated Writes &amp; Automatic Pre-Mutation Snapshots (<code>GROXY-SAFE-001</code>):</strong> Any row insert, update, delete, DDL change, or SQL import requires a plain-English impact summary, an automatic <code>Pre-Mutation Snapshot</code> (SHA-256 verified), <code>X-CSRF-Token</code>, and a target-bound single-use <code>approval_token</code> (replays or cross-target misuse blocked with HTTP <code>403</code>/<code>409</code>)—plus <strong>1-Click Snapshot Restore</strong>.</li>
+    <li><strong>AES-256-GCM Local Vault, 1-Click Marketplace &amp; Site DNA Fleet Rollouts:</strong> Encrypts SSH secrets locally with GRAB <code>use crypto</code>, pins OpenSSH <code>known_hosts</code> fingerprints (<code>GASH-E502</code>), opens up to 8 loopback tunnels, deploys hardened GrabLab CMS <code>v1.0.1</code> + Grex Theme Builder <code>v1.0.0</code> + Groxy AI <code>v1.0.0</code> stacks, and rolls out verified <code>Site DNA</code> bundles checked by <code>grabman v1.0.0</code> with 1-click rollback.</li>
   </ul>
 
   <h2>2. Quickstart: Starting Gashboard Locally</h2>
@@ -112,7 +112,7 @@ grab serve --addr 127.0.0.1:9390 --allow-scripts --static public ^
   </ol>
 
   <h2>3. Daily Operator Workflows</h2>
-  <h3>Configuring Namecheap DNS &amp; Auto-HTTPS Without Breaking Email (v0.3.0)</h3>
+  <h3>Configuring Namecheap DNS &amp; Auto-HTTPS Without Breaking Email</h3>
   <ol>
     <li><strong>Step 1 — Save Encrypted Credentials:</strong> Enter your Namecheap API User, API Key, and Whitelisted Client IPv4 into Step 1 of the <strong>Namecheap DNS &amp; Auto-HTTPS Wizard</strong> and click <strong>Save Encrypted Vault Credentials</strong>. Your browser wipes the raw key immediately and shows only a masked summary.</li>
     <li><strong>Step 2 — Preview Email-Safe Changes:</strong> Pick your destination VPS node, enter your domain and subdomain (<code>@</code> for apex or a prefix like <code>shop</code>), and click <strong>Preview Email-Safe DNS Changes</strong>. Review the plain-English table showing your <code>MX</code>, <code>SPF</code>, and <code>DKIM</code> email records marked as kept intact, then click <strong>Approve &amp; Apply DNS Records</strong>.</li>
@@ -129,7 +129,7 @@ grab serve --addr 127.0.0.1:9390 --allow-scripts --static public ^
   <h3>Deploying &amp; Rolling Back Site DNA</h3>
   <p>Paste a portable Groxy AI <code>Site DNA</code> JSON bundle, click <strong>Validate Site DNA &amp; Lockfile Diff</strong>, inspect the preview card, and click <strong>Approve &amp; Push Zero-Downtime Rollout</strong>. A single-use <code>approval_token</code> is consumed, a Pre-Deploy Snapshot is saved automatically, and <strong>1-Click Rollback</strong> restores the previous known-good state with <code>/_ready</code> HTTP <code>200</code> verification.</p>
 
-  <h2>4. 6-Layer Ecosystem Compatibility Matrix (SemVer PRE-1.0)</h2>
+  <h2>4. 6-Layer Ecosystem Compatibility Matrix (SemVer v1.0.0 Production Freeze)</h2>
   <table>
     <thead>
       <tr><th>Ecosystem Layer</th><th>Repository</th><th>Compatible Range</th><th>Touched in v{version}</th><th>Upgrade Required?</th></tr>
@@ -140,7 +140,7 @@ grab serve --addr 127.0.0.1:9390 --allow-scripts --static public ^
       <tr><td>Flagship Zero-Plugin CMS</td><td><code>urbanspress/grablab-cms</code></td><td><code>&gt;= v1.0.1 (&lt; v2.0.0)</code></td><td>No</td><td>No</td></tr>
       <tr><td>Visual Theme Builder Studio</td><td><code>urbanspress/grex-builder</code></td><td><code>&gt;= v1.0.0 (&lt; v2.0.0)</code></td><td>No</td><td>No</td></tr>
       <tr><td>Autonomous Content &amp; SEO Agent</td><td><code>urbanspress/groxy-ai</code></td><td><code>&gt;= v1.0.0 (&lt; v2.0.0)</code></td><td>No</td><td>No</td></tr>
-      <tr><td>Scaffolder, Orchestrator &amp; Panel</td><td><code>grabman</code>, <code>grabtaculous</code>, <code>gashboard</code></td><td><code>&gt;= v0.1.0</code></td><td><strong>Yes (gashboard v{version})</strong></td><td>No (additive Step 5 release)</td></tr>
+      <tr><td>Scaffolder, Orchestrator &amp; Panel</td><td><code>grabman</code>, <code>grabtaculous</code>, <code>gashboard</code></td><td><code>&gt;= v0.1.0 (&lt; v2.0.0)</code></td><td><strong>Yes (grabman v1.0.0, grabtaculous v1.0.0, gashboard v{version})</strong></td><td>No — 100% drop-in compatible with Steps 1–4</td></tr>
     </tbody>
   </table>
 
@@ -185,7 +185,7 @@ def render_pdf(browser_bin: str, html_path: Path, pdf_path: Path):
 
 def main():
     parser = argparse.ArgumentParser(description="Generate Gashboard HTML & PDF walkthrough release guide.")
-    parser.add_argument("--version", default="0.3.0", help="Release version without leading v (e.g. 0.3.0)")
+    parser.add_argument("--version", default="1.0.0", help="Release version without leading v (e.g. 1.0.0)")
     args = parser.parse_args()
     version = args.version.lstrip("v")
 

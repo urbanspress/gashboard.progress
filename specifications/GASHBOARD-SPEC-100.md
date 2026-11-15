@@ -1,6 +1,6 @@
 # GASHBOARD-SPEC-100: Gashboard `v1.0.0` Production Contract Freeze & Independent Pre-`v1.0.0` Cross-Layer Audit
 
-- **Status:** Specification in Review (Awaiting Project-Owner Approval Prior to `v1.0.0` Implementation & Release Tagging)
+- **Status:** Complete (`v1.0.0` Approved & Released — Synchronized across `urbanspress/gashboard.progress` & `urbanspress/gashboard.stable`)
 - **Target Release:** `v1.0.0` (`MAJOR.MINOR.PATCH` — Step 5 Multi-VPS Control Panel, Visual DB Manager & Auto-HTTPS Production Freeze)
 - **Foundational Baselines:**
   - **GRAB:** `v1.1.0` (`urbanspress/grab` — `Grisp`, `server.asset`, `use crypto` AES-256-GCM, `use data`, `use cache`, `use env`, `ADR-005`, `ADR-017`, `ADR-025c`)
@@ -94,7 +94,7 @@ Upon project-owner approval of this specification, the `v1.0.0` release implemen
 
 ## 4. `v1.0.0` Approval & Release Acceptance Gates
 
-No `v1.0.0` version bump or release tags may be published until the project owner approves this specification. Once approved:
-1. Bump version markers in `gashboard` to `"1.0.0"` across `src/gashboard.grab`, `views/dashboard.grab.html`, `public/gashboard/dashboard.js`, `bridge/cmd/gashboard-bridge/main.go`, and `package.json`.
-2. Update and re-run all 4 verification gates (`grab check` + `grab format` byte-for-byte parity, `node --test tests/*.test.js`, `go build`/`go test -count=1`/`govulncheck`, and `python tests/integration_e2e.py`) with 100% passing results.
-3. Build release packages (`gashboard-bridge` static binaries, Gashboard app bundle, `SHA256SUMS.txt`), generate `docs/releases/pdf/Gashboard-v1.0.0-Guide.pdf`, run `sync-notebook-sources.ps1`, and publish synchronized `v1.0.0` releases on `urbanspress/gashboard.progress` and `urbanspress/gashboard.stable`.
+Project-owner approval granted (`v1.0.0` Production Stability Freeze executed alongside `grabman v1.0.0` & `Grabtaculous v1.0.0`):
+1. [x] Bump version markers in `gashboard` to `"1.0.0"` across `src/gashboard.grab`, `views/dashboard.grab.html`, `public/gashboard/dashboard.js`, `public/gashboard/api-client.js`, `bridge/cmd/gashboard-bridge/main.go`, and `package.json`.
+2. [x] Update and re-run all 4 verification gates (`grab check` + `grab format` byte-for-byte parity, `node --test tests/*.test.js`, `go build`/`go test -count=1`/`govulncheck`, and `python tests/integration_e2e.py`) with 100% passing results.
+3. [x] Build release packages (`gashboard-bridge` static binaries, Gashboard app bundle, `SHA256SUMS.txt`), generate `docs/releases/pdf/Gashboard-v1.0.0-Guide.pdf`, run `sync-notebook-sources.ps1`, and publish synchronized `v1.0.0` releases on `urbanspress/gashboard.progress` and `urbanspress/gashboard.stable`.

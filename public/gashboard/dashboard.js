@@ -1,10 +1,10 @@
 /**
- * Gashboard v0.2.0 — Root Pure Grex JS v1.0.0 Control Panel Orchestrator.
+ * Gashboard v1.0.0 — Root Pure Grex JS v1.0.0 Control Panel Orchestrator.
  * Zero wrapper-<div> elements, zero innerHTML writes, 100% WCAG AA Light/Dark,
  * exact ADR-025c base-10 numeric wire strings, strict known_hosts pinning & DB Manager.
  */
 
-export const GASHBOARD_VERSION = "0.3.0";
+export const GASHBOARD_VERSION = "1.0.0";
 
 import {
   auditAccessibility,

@@ -51,7 +51,7 @@ test("vendored Grex JS v1.0.0 runtime & manifest match C:\\Development\\grex-js\
 });
 
 test("ADR-025c exact base-10 numeric wire validation rejects floats and precision drift", () => {
-  assert.equal(GASHBOARD_VERSION, "0.3.0");
+  assert.equal(GASHBOARD_VERSION, "1.0.0");
   assert.equal(isExactDecimalString("1000.00"), true);
   assert.equal(isExactDecimalString("12345678901234567890.1234"), true);
   assert.equal(isExactDecimalString("9007199254740993"), true);

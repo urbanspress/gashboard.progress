@@ -25,7 +25,7 @@ import (
 )
 
 // Version identifies the Gashboard Go SSH sidecar release version.
-var Version = "0.3.0"
+var Version = "1.0.0"
 
 const defaultListenAddr = "127.0.0.1:9391"
 

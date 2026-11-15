@@ -11,12 +11,12 @@ use server
 use text
 
 # ==============================================================================
-# Gashboard v0.3.0 — Discreet 127.0.0.1 Multi-VPS Control Panel, Fleet Deployer,
+# Gashboard v1.0.0 — Discreet 127.0.0.1 Multi-VPS Control Panel, Fleet Deployer,
 # Built-In Visual Database Manager & Namecheap DNS + Auto-HTTPS Wizard
-# Built cleanly on GRAB v1.1.0, Grex JS v1.0.0, grabman v0.1.0 & grabtaculous.
+# Built cleanly on GRAB v1.1.0, Grex JS v1.0.0, grabman v1.0.0 & grabtaculous v1.0.0.
 # ==============================================================================
 
-set gash_version to "0.3.0"
+set gash_version to "1.0.0"
 set gash_cache to cache.open using "gashboard"
 set db to data.open using "main"
 
@@ -354,7 +354,7 @@ make list_blueprints using v_tag
 end
 
 make find_blueprint using bp_id
-  set all_bps to list_blueprints using "0.3.0"
+  set all_bps to list_blueprints using "1.0.0"
   for each bp in all_bps
     if bp.id is bp_id
       give back bp

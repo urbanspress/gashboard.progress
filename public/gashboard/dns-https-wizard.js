@@ -1,5 +1,5 @@
 /**
- * Gashboard v0.3.0 — Namecheap Encrypted Vault, Email-Safe DNS Provisioner,
+ * Gashboard v1.0.0 — Namecheap Encrypted Vault, Email-Safe DNS Provisioner,
  * Live Propagation Preflight & Grabtaculous Auto-HTTPS + 1-Click Rollback Wizard.
  * Strictly zero wrapper-<div>s, zero innerHTML writes, zero plaintext secret storage in DOM.
  */

@@ -6,6 +6,16 @@ The format follows Semantic Versioning (`MAJOR.MINOR.PATCH`) and the GRAB Ecosys
 
 ---
 
+## [1.0.0] - 2026-11-15
+
+### Changed & Frozen (`GASHBOARD-SPEC-100.md`)
+- **Step 5 `v1.0.0` Production Stability Freeze:** Bumped frozen Gashboard runtime, UI, API client, Go SSH bridge, and package metadata versions (`src/gashboard.grab`, `views/dashboard.grab.html`, `public/gashboard/dashboard.js`, `public/gashboard/api-client.js`, `bridge/cmd/gashboard-bridge/main.go`, `package.json`) to `1.0.0`.
+- **Step 5 Ecosystem Alignment:** Synchronized directly with **`grabman v1.0.0`** (`schema_version` `"0.1.0"` & `"1.0.0"` dual compatibility, `step-5` `>= 0.1.0 < 2.0.0`) and **`Grabtaculous v1.0.0`** (`v1.0.0` CLI/daemon/catalog freeze) while keeping all 5 upstream `v1.x` repositories (`GRAB v1.1.0`, `Grex JS v1.0.0`, `GrabLab CMS v1.0.1`, `Grex Theme Builder v1.0.0`, `Groxy AI v1.0.0`) strictly unmodified.
+- **Security Hardening Verified & Frozen:** Locks in target-binding `approval_token` validation in `src/gashboard.grab` and expanded `GRAB-E401` / `403 GASH-E403` SSH private-key and TLS credential segment path-traversal blocking in `bridge/internal/dbinspect/security.go`.
+- **Verification & Release Packaging:** Passed Gate 1 (`grab check` + byte-for-byte `grab format` parity + zero `<div>` / zero `innerHTML`), Gate 2 (`node --test tests/*.test.js`), Gate 3 (`go build`/`go test -count=1`/`govulncheck` with `0` vulnerabilities), and Gate 4 (`python tests/integration_e2e.py` asserting rendered UI & bridge `"1.0.0"`), packaged `gashboard-ssh-windows-amd64.exe`, `gashboard-ssh-linux-amd64`, `gashboard-v1.0.0-bundle.zip`, `docs/releases/pdf/Gashboard-v1.0.0-Guide.pdf`, and `SHA256SUMS.txt`.
+
+---
+
 ## [0.3.0] - 2026-11-15
 
 ### Added
