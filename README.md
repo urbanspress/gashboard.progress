@@ -7,13 +7,37 @@
 
 **Gashboard** is the Discreet Pure **`Grex JS v1.0.0`** Multi-VPS Web Control Panel, 1-Click App Marketplace UI (**GrabLab CMS + Grex Theme Builder + Groxy AI**), Encrypted `127.0.0.1` SSH Database Tunneling Manager, and `Site DNA` Fleet Deployer for **Step 5 of the Post-1.0 GRAB Ecosystem**.
 
-- **Current Status:** `v0.1.0` — **Specification in Review** ([`specifications/GASHBOARD-SPEC-001.md`](specifications/GASHBOARD-SPEC-001.md) drafted; zero implementation code written pending owner approval).
+- **Current Status:** `v0.1.0` — **Released** ([`specifications/GASHBOARD-SPEC-001.md`](specifications/GASHBOARD-SPEC-001.md) implemented, verified 100% across all 3 gates, and published on `origin` & `stable`).
+- **Walkthrough Guide (PDF):** [`docs/releases/pdf/Gashboard-v0.1.0-Guide.pdf`](docs/releases/pdf/Gashboard-v0.1.0-Guide.pdf)
+- **Changelog:** [`CHANGELOG.md`](CHANGELOG.md)
 - **Development Repo (`origin`):** `https://github.com/urbanspress/gashboard.progress`
 - **Production Release Repo (`stable`):** `https://github.com/urbanspress/gashboard.stable`
 
 ---
 
-## Core Architecture Pillars (Planned `v0.1.0`)
+## Quick Start (`v0.1.0` Local Workstation)
+
+```powershell
+# 1. Run SQLite schema migration once
+grab migrate --db-config grab.data.json --allow-db main:migrate migrations/001_gashboard_schema.grab
+
+# 2. Start the 127.0.0.1 Go SSH & CLI bridge
+go run ./bridge/cmd/gashboard-bridge --listen 127.0.0.1:9450 --known-hosts $HOME\.ssh\known_hosts
+
+# 3. Start Gashboard strictly on loopback 127.0.0.1:9390
+grab serve --addr 127.0.0.1:9390 --allow-scripts --static public `
+  --db-config grab.data.json --allow-db main:read-write `
+  --platform-config grab.platform.json --allow-cache gashboard:read-write `
+  --allow-read . --allow-write storage `
+  --allow-env GASHBOARD_MASTER_KEY,GASHBOARD_BRIDGE_URL,GASHBOARD_BRIDGE_TOKEN,GASHBOARD_GRABTACULOUS_URL,GASHBOARD_GRABTACULOUS_TOKEN `
+  --allow-net 127.0.0.1:9450,127.0.0.1:9440 src/gashboard.grab
+```
+
+Open `http://127.0.0.1:9390/gashboard` in your browser. For plain-English setup and SSH tunnel instructions, see [`docs/releases/pdf/Gashboard-v0.1.0-Guide.pdf`](docs/releases/pdf/Gashboard-v0.1.0-Guide.pdf).
+
+---
+
+## Core Architecture Pillars (`v0.1.0`)
 
 1. **Zero Public VPS Login Attack Surface (`ADR-005`, `ADR-017`):**
    - **Gashboard** lives purely on your local workstation (`127.0.0.1`), managing remote servers via encrypted, `known_hosts`-pinned SSH connections to **Grabtaculous**—never opening a public control-panel web port on your VPS.

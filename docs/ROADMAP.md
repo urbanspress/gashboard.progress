@@ -13,9 +13,9 @@
 
 ## `v0.1.0` — Discreet Pure `Grex JS v1.0.0` Multi-VPS Control Panel, 1-Click App Marketplace UI, Encrypted SSH DB Tunneling & `Site DNA` Fleet Deployer
 
-**Status:** Specification in Review ([`specifications/GASHBOARD-SPEC-001.md`](../specifications/GASHBOARD-SPEC-001.md))
+**Status:** Complete (`v0.1.0` Released — [`specifications/GASHBOARD-SPEC-001.md`](../specifications/GASHBOARD-SPEC-001.md))
 
-Planned Scope (Awaiting Approval):
+Approved Scope:
 - **Discreet Localhost Control Plane (`127.0.0.1`-Only):** Runs locally on the user's workstation (`GRAB v1.1.0` + `Grex JS v1.0.0` zero-`<div>` UI paired with a `127.0.0.1` Go SSH bridge), eliminating public VPS control-panel login pages (`ADR-005`, `ADR-017`).
 - **Multi-VPS Fleet Inventory & Live Health Telemetry:** Key-authenticated, `known_hosts`-pinned VPS server inventory displaying live `Grisp` worker health, `/_ready` probes, edge TLS domains, and exact `ADR-025c` resource numbers.
 - **1-Click App Marketplace UI:** Point-and-click deployment wizard powered by **Grabtaculous** blueprints—highlighting **`GrabLab CMS v1.0.1 + Grex Theme Builder v1.0.0 + Groxy AI v1.0.0`**, custom domain + Caddy/Nginx/Cloudflare SSL wiring, `--read-only` security preview, and `grabman doctor` preflight validation.

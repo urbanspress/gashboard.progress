@@ -1,0 +1,11 @@
+{
+  "version": 1,
+  "caches": {
+    "gashboard": {
+      "driver": "memory",
+      "namespace": "gashboard",
+      "max_keys": 5000,
+      "max_bytes": 16777216
+    }
+  }
+}

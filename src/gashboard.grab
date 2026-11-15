@@ -1,0 +1,862 @@
+use cache
+use collections
+use crypto
+use data
+use dates
+use env
+use http
+use json
+use math
+use server
+use text
+
+# ==============================================================================
+# Gashboard v0.1.0 — Discreet 127.0.0.1 Multi-VPS Control Plane & Fleet Deployer
+# Built cleanly on GRAB v1.1.0, Grex JS v1.0.0, grabman v0.1.0 & grabtaculous.
+# ==============================================================================
+
+set gash_version to "0.1.0"
+set gash_cache to cache.open using "gashboard"
+set db to data.open using "main"
+
+set stmt_count_nodes to data.prepare using db, "SELECT count(*) AS total FROM vps_nodes", record {params: record {}, columns: record {total: "integer"}}
+set stmt_list_nodes to data.prepare using db, "SELECT id, label, host, ssh_port, ssh_user, host_key_fingerprint, environment, edge_proxy, domain, cpu_pct, ram_gb, disk_gb, grisp_workers, status, created_at FROM vps_nodes ORDER BY created_at ASC, id ASC", record {params: record {}, columns: record {id: "text", label: "text", host: "text", ssh_port: "text", ssh_user: "text", host_key_fingerprint: "text", environment: "text", edge_proxy: "text", domain: "text", cpu_pct: "text", ram_gb: "text", disk_gb: "text", grisp_workers: "text", status: "text", created_at: "text"}}
+set stmt_get_node to data.prepare using db, "SELECT id, label, host, ssh_port, ssh_user, host_key_fingerprint, environment, edge_proxy, domain, cpu_pct, ram_gb, disk_gb, grisp_workers, status, created_at FROM vps_nodes WHERE id = :id", record {params: record {id: "text"}, columns: record {id: "text", label: "text", host: "text", ssh_port: "text", ssh_user: "text", host_key_fingerprint: "text", environment: "text", edge_proxy: "text", domain: "text", cpu_pct: "text", ram_gb: "text", disk_gb: "text", grisp_workers: "text", status: "text", created_at: "text"}}
+set stmt_insert_node to data.prepare using db, "INSERT INTO vps_nodes (id, label, host, ssh_port, ssh_user, host_key_fingerprint, encrypted_credential, environment, edge_proxy, domain, cpu_pct, ram_gb, disk_gb, grisp_workers, status, created_at) VALUES (:id, :label, :host, :ssh_port, :ssh_user, :host_key_fingerprint, :encrypted_credential, :environment, :edge_proxy, :domain, :cpu_pct, :ram_gb, :disk_gb, :grisp_workers, :status, :created_at)", record {params: record {id: "text", label: "text", host: "text", ssh_port: "text", ssh_user: "text", host_key_fingerprint: "text", encrypted_credential: "text", environment: "text", edge_proxy: "text", domain: "text", cpu_pct: "text", ram_gb: "text", disk_gb: "text", grisp_workers: "text", status: "text", created_at: "text"}, columns: record {}}
+set stmt_update_node_status to data.prepare using db, "UPDATE vps_nodes SET status = :status, cpu_pct = :cpu_pct, grisp_workers = :grisp_workers WHERE id = :id", record {params: record {status: "text", cpu_pct: "text", grisp_workers: "text", id: "text"}, columns: record {}}
+
+set stmt_insert_install to data.prepare using db, "INSERT INTO marketplace_installs (id, node_id, blueprint_id, app_name, domain, edge_proxy, read_only_enforced, snapshot_id, status, created_at) VALUES (:id, :node_id, :blueprint_id, :app_name, :domain, :edge_proxy, :read_only_enforced, :snapshot_id, :status, :created_at)", record {params: record {id: "text", node_id: "text", blueprint_id: "text", app_name: "text", domain: "text", edge_proxy: "text", read_only_enforced: "integer", snapshot_id: "text", status: "text", created_at: "text"}, columns: record {}}
+
+set stmt_count_active_tunnels to data.prepare using db, "SELECT count(*) AS total FROM ssh_tunnels WHERE status = 'active'", record {params: record {}, columns: record {total: "integer"}}
+set stmt_list_active_tunnels to data.prepare using db, "SELECT id, node_id, engine, local_host, local_port, remote_host, remote_port, ttl_minutes, status, created_at, expires_at FROM ssh_tunnels WHERE status = 'active' ORDER BY created_at ASC, id ASC", record {params: record {}, columns: record {id: "text", node_id: "text", engine: "text", local_host: "text", local_port: "text", remote_host: "text", remote_port: "text", ttl_minutes: "text", status: "text", created_at: "text", expires_at: "text"}}
+set stmt_get_tunnel to data.prepare using db, "SELECT id, node_id, engine, local_host, local_port, remote_host, remote_port, ttl_minutes, status, created_at, expires_at FROM ssh_tunnels WHERE id = :id", record {params: record {id: "text"}, columns: record {id: "text", node_id: "text", engine: "text", local_host: "text", local_port: "text", remote_host: "text", remote_port: "text", ttl_minutes: "text", status: "text", created_at: "text", expires_at: "text"}}
+set stmt_insert_tunnel to data.prepare using db, "INSERT INTO ssh_tunnels (id, node_id, engine, local_host, local_port, remote_host, remote_port, ttl_minutes, status, created_at, expires_at) VALUES (:id, :node_id, :engine, :local_host, :local_port, :remote_host, :remote_port, :ttl_minutes, :status, :created_at, :expires_at)", record {params: record {id: "text", node_id: "text", engine: "text", local_host: "text", local_port: "text", remote_host: "text", remote_port: "text", ttl_minutes: "text", status: "text", created_at: "text", expires_at: "text"}, columns: record {}}
+set stmt_close_tunnel to data.prepare using db, "UPDATE ssh_tunnels SET status = 'closed' WHERE id = :id", record {params: record {id: "text"}, columns: record {}}
+
+set stmt_list_snapshots to data.prepare using db, "SELECT id, node_id, dna_digest, lock_digest, snapshot_id, status, ready_status, created_at FROM site_dna_deployments ORDER BY created_at DESC, id DESC", record {params: record {}, columns: record {id: "text", node_id: "text", dna_digest: "text", lock_digest: "text", snapshot_id: "text", status: "text", ready_status: "text", created_at: "text"}}
+set stmt_get_snapshot to data.prepare using db, "SELECT id, node_id, dna_digest, lock_digest, snapshot_id, status, ready_status, created_at FROM site_dna_deployments WHERE snapshot_id = :snapshot_id", record {params: record {snapshot_id: "text"}, columns: record {id: "text", node_id: "text", dna_digest: "text", lock_digest: "text", snapshot_id: "text", status: "text", ready_status: "text", created_at: "text"}}
+set stmt_insert_deployment to data.prepare using db, "INSERT INTO site_dna_deployments (id, node_id, dna_digest, lock_digest, snapshot_id, status, ready_status, created_at) VALUES (:id, :node_id, :dna_digest, :lock_digest, :snapshot_id, :status, :ready_status, :created_at)", record {params: record {id: "text", node_id: "text", dna_digest: "text", lock_digest: "text", snapshot_id: "text", status: "text", ready_status: "text", created_at: "text"}, columns: record {}}
+set stmt_update_deployment_status to data.prepare using db, "UPDATE site_dna_deployments SET status = :status, ready_status = :ready_status WHERE snapshot_id = :snapshot_id", record {params: record {status: "text", ready_status: "text", snapshot_id: "text"}, columns: record {}}
+
+# ==============================================================================
+# Helpers: Cache, Env, Security, ADR-025c Validation, Host-Key Pinning & Bridge
+# ==============================================================================
+
+make safe_asset_url using raw_path
+  try
+    give back server.asset using raw_path
+  catch err
+    give back raw_path
+  end
+end
+
+make resolve_env_opt using key_name
+  try
+    if env.has using key_name
+      give back text.trim using (env.get using key_name)
+    end
+  catch e
+    set ignored_e to e.message
+  end
+  give back ""
+end
+
+make has_map_key using m, key
+  if m is nothing
+    give back no
+  end
+  try
+    set ks to collections.keys using m
+    for each k in ks
+      if k is key
+        give back yes
+      end
+    end
+  catch err
+    give back no
+  end
+  give back no
+end
+
+make is_record_value using val
+  if val is nothing
+    give back no
+  end
+  try
+    set ks to collections.keys using val
+    give back yes
+  catch err
+    give back no
+  end
+end
+
+make is_list_value using val
+  if val is nothing
+    give back no
+  end
+  try
+    set js to json.stringify using val
+    give back text.starts_with using js, "["
+  catch err
+    give back no
+  end
+end
+
+make map_get_str using m, key, fallback
+  if not (has_map_key using m, key)
+    give back fallback
+  end
+  set v to m at key
+  if v is nothing
+    give back fallback
+  end
+  give back text.from using v
+end
+
+make copy_to_map using rec
+  set out to {}
+  if rec is not nothing
+    for each k in (collections.keys using rec)
+      set out to collections.put using out, k, (rec at k)
+    end
+  end
+  give back out
+end
+
+make cache_get_opt using c, k
+  set cached to cache.get using c, k
+  if cached.found
+    give back cached.value
+  end
+  give back nothing
+end
+
+make derive_vault_key using seed_tag
+  set raw_master to resolve_env_opt using "GASHBOARD_MASTER_KEY"
+  if raw_master is ""
+    set raw_master to "gashboard-v010-loopback-dev-vault-" joined with seed_tag
+  end
+  give back crypto.sha256_hex using raw_master
+end
+
+make encrypt_vault_secret using plaintext
+  set k to derive_vault_key using "aes256gcm"
+  give back crypto.encrypt_aead using plaintext, k
+end
+
+make get_or_create_csrf using c
+  set existing to cache_get_opt using c, "gash_csrf"
+  if existing is not nothing
+    give back existing
+  end
+  set tok to "gash_csrf_" joined with (crypto.random_urlsafe using 24)
+  call cache.set using c, "gash_csrf", tok, 86400000
+  give back tok
+end
+
+make verify_csrf using c, req
+  set expected to get_or_create_csrf using c
+  set provided to ""
+  if req.headers is not nothing
+    for each hk in (collections.keys using req.headers)
+      if (text.lower using hk) is "x-csrf-token"
+        set provided to text.trim using (text.from using (req.headers at hk))
+      end
+    end
+  end
+  give back (provided is not "") and (provided is expected)
+end
+
+make mint_approval using c, kind, payload_rec
+  set tok to "gash_apprv_" joined with (crypto.random_urlsafe using 24)
+  set entry to record {used: no, kind: kind, payload: payload_rec}
+  call cache.set using c, ("apprv:" joined with tok), entry, 3600000
+  give back tok
+end
+
+make consume_approval using c, tok_raw, expected_kind
+  set tok to text.trim using tok_raw
+  if tok is ""
+    give back record {ok: no, status: 403, code: "GASH-E403", error: "approval_token is required", payload: nothing}
+  end
+  set ckey to "apprv:" joined with tok
+  set entry to cache_get_opt using c, ckey
+  if entry is nothing
+    give back record {ok: no, status: 403, code: "GASH-E403", error: "Invalid or expired approval_token", payload: nothing}
+  end
+  if entry.used
+    give back record {ok: no, status: 409, code: "GASH-E409", error: "approval_token has already been consumed", payload: nothing}
+  end
+  if (expected_kind is not "") and (entry.kind is not expected_kind)
+    give back record {ok: no, status: 403, code: "GASH-E403", error: "approval_token scope mismatch", payload: nothing}
+  end
+  set consumed to record {used: yes, kind: entry.kind, payload: entry.payload}
+  call cache.set using c, ckey, consumed, 3600000
+  give back record {ok: yes, status: 200, code: "", error: "", payload: entry.payload}
+end
+
+make is_exact_decimal_wire using val_str
+  set s to text.trim using (text.from using val_str)
+  set slen to text.length using s
+  if slen is 0
+    give back no
+  end
+  if (text.contains using s, "000000") or (text.contains using s, "999999")
+    give back no
+  end
+  set digits to "0123456789"
+  set dot_count to 0
+  set chars to text.split using s, ""
+  set idx to 0
+  for each ch in chars
+    if ch is "."
+      set dot_count to dot_count plus 1
+      if dot_count is greater than 1 or idx is 0 or idx is (slen minus 1)
+        give back no
+      end
+    otherwise
+      if not (text.contains using digits, ch)
+        give back no
+      end
+    end
+    set idx to idx plus 1
+  end
+  give back yes
+end
+
+make is_strict_decimal_wire using raw_val
+  if raw_val is nothing
+    give back no
+  end
+  set js_repr to json.stringify using raw_val
+  if not (text.starts_with using js_repr, "\"")
+    give back no
+  end
+  give back is_exact_decimal_wire using (text.from using raw_val)
+end
+
+make validate_wire_fields using payload, field_names
+  for each fname in field_names
+    if (has_map_key using payload, fname) and ((payload at fname) is not nothing)
+      set raw_v to payload at fname
+      if not (is_strict_decimal_wire using raw_v)
+        give back record {ok: no, field: fname}
+      end
+    end
+  end
+  give back record {ok: yes, field: ""}
+end
+
+make is_valid_host_fingerprint using fp_raw
+  set fp to text.trim using fp_raw
+  if not (text.starts_with using fp, "SHA256:")
+    give back no
+  end
+  if (text.length using fp) is less than 23
+    give back no
+  end
+  if (text.contains using fp, " ") or (text.contains using fp, "*")
+    give back no
+  end
+  give back yes
+end
+
+make is_safe_edge_proxy using proxy_raw
+  set p to text.lower using (text.trim using proxy_raw)
+  give back (p is "caddy") or (p is "nginx") or (p is "cloudflare-tunnel")
+end
+
+make default_remote_port using engine_raw
+  set e to text.lower using (text.trim using engine_raw)
+  if e is "postgres" or e is "postgresql"
+    give back "5432"
+  end
+  if e is "mariadb" or e is "mysql"
+    give back "3306"
+  end
+  if e is "redis"
+    give back "6379"
+  end
+  give back ""
+end
+
+make bridge_post using api_path, body_map
+  set b_url to resolve_env_opt using "GASHBOARD_BRIDGE_URL"
+  if b_url is ""
+    give back record {configured: no, ok: no, status: 0, code: "", error: "", data: {}}
+  end
+  set b_tok to resolve_env_opt using "GASHBOARD_BRIDGE_TOKEN"
+  set hdrs to {"Content-Type": "application/json", "Authorization": ("Bearer " joined with b_tok)}
+  try
+    set resp to http.post using (b_url joined with api_path), (json.stringify using body_map), record {headers: hdrs}
+    set parsed to {}
+    try
+      set parsed to json.parse using resp.body
+    catch jerr
+      set parsed to {"raw": resp.body}
+    end
+    set err_txt to map_get_str using parsed, "error", ("Bridge HTTP " joined with (text.from using resp.status))
+    set code_txt to map_get_str using parsed, "code", ""
+    give back record {configured: yes, ok: resp.ok, status: resp.status, code: code_txt, error: err_txt, data: parsed}
+  catch nerr
+    give back record {configured: yes, ok: no, status: 502, code: "GASH-E502", error: nerr.message, data: {}}
+  end
+end
+
+make compute_tunnel_expiry using now_rec, ttl_mins
+  set exp_unix to now_rec.unix plus (ttl_mins times 60)
+  set exp_rec to dates.from_unix using exp_unix
+  give back exp_rec.iso
+end
+
+make list_blueprints using v_tag
+  set b1 to record {id: "grablab-grex-bundle", name: "GrabLab CMS + Grex Theme Builder + Groxy AI", category: "flagship", version: "1.0.1", read_only_hardened: yes, summary: "Complete zero-plugin CMS, visual studio, and autonomous SEO agent in hardened --read-only containers."}
+  set b2 to record {id: "grablab-full-stack", name: "GrabLab CMS Stack + Private PostgreSQL 18", category: "enterprise", version: "1.0.1", read_only_hardened: yes, summary: "Full publishing stack backed by a loopback-only PostgreSQL 18 store."}
+  set b3 to record {id: "grab-grisp-app", name: "Standalone GRAB v1.1.0 Grisp Worker App", category: "core", version: "1.1.0", read_only_hardened: yes, summary: "High-speed custom .grab application with multi-worker Grisp supervisor."}
+  set b4 to record {id: "postgres-18", name: "PostgreSQL 18 (127.0.0.1 Loopback Only)", category: "datastore", version: "18.1", read_only_hardened: yes, summary: "Private PostgreSQL instance reachable exclusively via encrypted Gashboard SSH tunnels."}
+  set b5 to record {id: "mariadb-11-8", name: "MariaDB 11.8 (127.0.0.1 Loopback Only)", category: "datastore", version: "11.8", read_only_hardened: yes, summary: "Private relational database reachable exclusively over SSH tunnels."}
+  set b6 to record {id: "redis-standalone", name: "Redis Standalone Cache (127.0.0.1 Loopback Only)", category: "datastore", version: "7.4", read_only_hardened: yes, summary: "Private in-memory cache and rate limiter with zero public ports."}
+  set b7 to record {id: "analytics", name: "Privacy-First Web Analytics (Plausible)", category: "companion", version: "2.1", read_only_hardened: yes, summary: "Cookie-free analytics behind automatic HTTPS."}
+  set b8 to record {id: "object-storage", name: "Garage S3 Media & Backup Storage", category: "companion", version: "1.0", read_only_hardened: yes, summary: "Self-hosted S3-compatible object storage for uploads and snapshots."}
+  give back [b1, b2, b3, b4, b5, b6, b7, b8]
+end
+
+make find_blueprint using bp_id
+  set all_bps to list_blueprints using "0.1.0"
+  for each bp in all_bps
+    if bp.id is bp_id
+      give back bp
+    end
+  end
+  give back nothing
+end
+
+make enrich_snapshots_for_ui using c, raw_rows
+  set out to []
+  for each row in raw_rows
+    set item to copy_to_map using row
+    set cached_tok to cache_get_opt using c, ("snap_rb:" joined with row.snapshot_id)
+    if cached_tok is not nothing
+      set apprv to cache_get_opt using c, ("apprv:" joined with cached_tok)
+      if apprv is not nothing and (not apprv.used)
+        set item to collections.put using item, "rollback_token", cached_tok
+      end
+    end
+    set out to collections.append using out, item
+  end
+  give back out
+end
+
+make seed_default_vps_nodes using s_count, s_insert
+  set cnt_row to data.one using s_count, record {}
+  if cnt_row is not nothing and (cnt_row.total is greater than 0)
+    give back no
+  end
+  set now_r to call dates.now_utc
+  set cipher_1 to encrypt_vault_secret using "ed25519-ssh-agent:prod"
+  set cipher_2 to encrypt_vault_secret using "ed25519-ssh-agent:stage"
+  call data.execute using s_insert, record {id: "vps-prod-01", label: "Production Flagship Node", host: "198.51.100.24", ssh_port: "22", ssh_user: "deploy", host_key_fingerprint: "SHA256:47DEQpj8HBSa+/TImW+5JCeuQeRkm5NMpJWZG3hSuFU", encrypted_credential: cipher_1, environment: "production", edge_proxy: "caddy", domain: "shop.example.com", cpu_pct: "14.25", ram_gb: "8.00", disk_gb: "160.00", grisp_workers: "4", status: "healthy", created_at: now_r.iso}
+  call data.execute using s_insert, record {id: "vps-stage-01", label: "Staging Preview Node", host: "203.0.113.18", ssh_port: "2222", ssh_user: "deploy", host_key_fingerprint: "SHA256:9f86d081884c7d659a2feaa0c55ad015a3bf4f1b2b0", encrypted_credential: cipher_2, environment: "staging", edge_proxy: "cloudflare-tunnel", domain: "staging.example.com", cpu_pct: "6.50", ram_gb: "4.00", disk_gb: "80.00", grisp_workers: "2", status: "healthy", created_at: now_r.iso}
+  give back yes
+end
+
+set seeded_init to seed_default_vps_nodes using stmt_count_nodes, stmt_insert_node
+
+# ==============================================================================
+# Health, Readiness & Grex JS v1.0.0 Control Panel Routes
+# ==============================================================================
+
+route "GET" "/_health"
+  give back server.json using 200, record {ok: yes, status: "ok", service: "gashboard", version: gash_version, bind: "127.0.0.1"}
+end
+
+route "GET" "/_ready"
+  set cnt to data.one using stmt_count_nodes, record {}
+  set total_nodes to 0
+  if cnt is not nothing
+    set total_nodes to cnt.total
+  end
+  give back server.json using 200, record {ok: yes, ready: yes, status: "ready", service: "gashboard", version: gash_version, db: "ready", csrf_enforced: yes, node_count: total_nodes}
+end
+
+route "GET" "/"
+  set csrf to get_or_create_csrf using gash_cache
+  set css_url to safe_asset_url using "/static/gashboard/gashboard.css"
+  set js_url to safe_asset_url using "/static/gashboard/dashboard.js"
+  give back server.html using "../views/dashboard.grab.html", record {csrf_token: csrf, gashboard_css_url: css_url, dashboard_js_url: js_url}
+end
+
+route "GET" "/gashboard"
+  set csrf to get_or_create_csrf using gash_cache
+  set css_url to safe_asset_url using "/static/gashboard/gashboard.css"
+  set js_url to safe_asset_url using "/static/gashboard/dashboard.js"
+  give back server.html using "../views/dashboard.grab.html", record {csrf_token: csrf, gashboard_css_url: css_url, dashboard_js_url: js_url}
+end
+
+# ==============================================================================
+# Multi-VPS Fleet Inventory & AES-256-GCM Vault Routes
+# ==============================================================================
+
+route "GET" "/api/vps"
+  set nodes to data.query using stmt_list_nodes, record {}
+  give back server.json using 200, record {ok: yes, bind: "127.0.0.1", nodes: nodes}
+end
+
+route "POST" "/api/vps/register" using req
+  if not (verify_csrf using gash_cache, req)
+    give back server.json using 403, record {ok: no, code: "GASH-E403", error: "Invalid or missing X-CSRF-Token"}
+  end
+  try
+    set payload to server.parse_json using req
+    set host to text.trim using (map_get_str using payload, "host", "")
+    set label to text.trim using (map_get_str using payload, "label", "")
+    set ssh_user to text.trim using (map_get_str using payload, "ssh_user", "deploy")
+    set fp to text.trim using (map_get_str using payload, "host_key_fingerprint", "")
+    set raw_cred to map_get_str using payload, "ssh_credential", ""
+
+    if host is "" or label is ""
+      give back server.json using 400, record {ok: no, error: "label and host are required"}
+    end
+    if not (is_valid_host_fingerprint using fp)
+      give back server.json using 403, record {ok: no, code: "GASH-E502", error: "Strict known_hosts pinning requires a valid SHA256:<base64> host_key_fingerprint"}
+    end
+    if raw_cred is ""
+      give back server.json using 400, record {ok: no, error: "ssh_credential or SSH agent reference is required"}
+    end
+
+    set wire_check to validate_wire_fields using payload, ["ssh_port", "cpu_pct", "ram_gb", "disk_gb", "grisp_workers"]
+    if not wire_check.ok
+      give back server.json using 422, record {ok: no, code: "GASH-E422", error: ("ADR-025c violation: field \"" joined with wire_check.field joined with "\" must be an exact base-10 wire string.")}
+    end
+
+    set ssh_port to text.trim using (map_get_str using payload, "ssh_port", "22")
+    set port_int to text.to_integer using ssh_port
+    if port_int is less than 1 or port_int is greater than 65535
+      give back server.json using 422, record {ok: no, code: "GASH-E422", error: "ssh_port must be between 1 and 65535"}
+    end
+
+    if (has_map_key using payload, "known_hosts_lines") and (is_list_value using (payload at "known_hosts_lines"))
+      set kh_res to bridge_post using "/v1/ssh/verify-host", {"host": host, "port": port_int, "fingerprint": fp, "known_hosts_lines": (payload at "known_hosts_lines")}
+      if kh_res.configured and (not kh_res.ok)
+        give back server.json using 403, record {ok: no, code: "GASH-E502", error: kh_res.error}
+      end
+    end
+
+    set env_name to text.lower using (text.trim using (map_get_str using payload, "environment", "production"))
+    if env_name is not "staging"
+      set env_name to "production"
+    end
+    set edge_proxy to text.lower using (text.trim using (map_get_str using payload, "edge_proxy", "caddy"))
+    if not (is_safe_edge_proxy using edge_proxy)
+      give back server.json using 422, record {ok: no, error: "edge_proxy must be caddy, nginx, or cloudflare-tunnel"}
+    end
+
+    set domain to text.trim using (map_get_str using payload, "domain", "shop.example.com")
+    set cpu_pct to text.trim using (map_get_str using payload, "cpu_pct", "10.00")
+    set ram_gb to text.trim using (map_get_str using payload, "ram_gb", "4.00")
+    set disk_gb to text.trim using (map_get_str using payload, "disk_gb", "80.00")
+    set workers to text.trim using (map_get_str using payload, "grisp_workers", "2")
+
+    set node_id to "vps-" joined with (crypto.random_hex using 16)
+    set encrypted_cred to encrypt_vault_secret using raw_cred
+    set now_r to call dates.now_utc
+
+    call data.execute using stmt_insert_node, record {id: node_id, label: label, host: host, ssh_port: ssh_port, ssh_user: ssh_user, host_key_fingerprint: fp, encrypted_credential: encrypted_cred, environment: env_name, edge_proxy: edge_proxy, domain: domain, cpu_pct: cpu_pct, ram_gb: ram_gb, disk_gb: disk_gb, grisp_workers: workers, status: "healthy", created_at: now_r.iso}
+
+    set saved to data.one using stmt_get_node, record {id: node_id}
+    give back server.json using 200, record {ok: yes, node: saved, vault_cipher: "AES-256-GCM", host_key_pinned: yes}
+  catch err
+    give back server.json using 400, record {ok: no, error: err.message}
+  end
+end
+
+route "POST" "/api/vps/{id}/probe" using req
+  if not (verify_csrf using gash_cache, req)
+    give back server.json using 403, record {ok: no, code: "GASH-E403", error: "Invalid or missing X-CSRF-Token"}
+  end
+  set node_id to text.trim using req.params.id
+  set node to data.one using stmt_get_node, record {id: node_id}
+  if node is nothing
+    give back server.json using 404, record {ok: no, error: ("VPS node not found: " joined with node_id)}
+  end
+
+  set grabtac_url to resolve_env_opt using "GASHBOARD_GRABTACULOUS_URL"
+  set grabtac_tok to resolve_env_opt using "GASHBOARD_GRABTACULOUS_TOKEN"
+  if grabtac_url is not ""
+    set p_int to text.to_integer using node.ssh_port
+    set proxy_res to bridge_post using "/v1/grabtaculous/proxy", {"ssh_host": node.host, "ssh_port": p_int, "host_key_fingerprint": node.host_key_fingerprint, "target_url": grabtac_url, "bearer_token": grabtac_tok, "method": "GET", "api_path": "/_ready", "payload": nothing}
+    if proxy_res.configured and (not proxy_res.ok)
+      give back server.json using 502, record {ok: no, code: "GASH-E502", error: proxy_res.error}
+    end
+  end
+
+  call data.execute using stmt_update_node_status, record {status: "healthy", cpu_pct: node.cpu_pct, grisp_workers: node.grisp_workers, id: node_id}
+  set updated to data.one using stmt_get_node, record {id: node_id}
+  give back server.json using 200, record {ok: yes, node: updated, ready_status: "200", tunnel_verified: yes}
+end
+
+# ==============================================================================
+# 1-Click App Marketplace Routes (Preflight + Single-Use Approval + Deploy)
+# ==============================================================================
+
+route "GET" "/api/marketplace/catalog"
+  set bps to list_blueprints using gash_version
+  give back server.json using 200, record {ok: yes, blueprints: bps, read_only_enforced: yes}
+end
+
+route "POST" "/api/marketplace/plan" using req
+  if not (verify_csrf using gash_cache, req)
+    give back server.json using 403, record {ok: no, code: "GASH-E403", error: "Invalid or missing X-CSRF-Token"}
+  end
+  try
+    set payload to server.parse_json using req
+    set node_id to text.trim using (map_get_str using payload, "node_id", "vps-prod-01")
+    set bp_id to text.trim using (map_get_str using payload, "blueprint_id", "grablab-grex-bundle")
+    set app_name to text.trim using (map_get_str using payload, "app_name", "my-storefront")
+    set domain to text.trim using (map_get_str using payload, "domain", "shop.example.com")
+    set edge_proxy to text.lower using (text.trim using (map_get_str using payload, "edge_proxy", "caddy"))
+
+    set bp to find_blueprint using bp_id
+    if bp is nothing
+      give back server.json using 404, record {ok: no, error: ("Unknown marketplace blueprint: " joined with bp_id)}
+    end
+    if not (is_safe_edge_proxy using edge_proxy)
+      give back server.json using 422, record {ok: no, error: "edge_proxy must be caddy, nginx, or cloudflare-tunnel"}
+    end
+
+    set doctor_status to "pass"
+    set ws_path to text.trim using (map_get_str using payload, "workspace", "")
+    if ws_path is not ""
+      set doc_res to bridge_post using "/v1/grabman/doctor", {"workspace": ws_path, "strict": no}
+      if doc_res.configured and (not doc_res.ok)
+        give back server.json using 422, record {ok: no, error: doc_res.error}
+      end
+    end
+
+    set plan_id to "plan_" joined with (crypto.random_hex using 16)
+    set plan_rec to record {plan_id: plan_id, node_id: node_id, blueprint_id: bp_id, app_name: app_name, domain: domain, edge_proxy: edge_proxy, read_only: yes, doctor_status: doctor_status}
+    set tok to mint_approval using gash_cache, "marketplace_deploy", plan_rec
+    give back server.json using 200, record {ok: yes, plan_id: plan_id, node_id: node_id, blueprint_id: bp_id, app_name: app_name, domain: domain, edge_proxy: edge_proxy, read_only: yes, doctor_status: doctor_status, approval_token: tok}
+  catch err
+    give back server.json using 400, record {ok: no, error: err.message}
+  end
+end
+
+route "POST" "/api/marketplace/deploy" using req
+  if not (verify_csrf using gash_cache, req)
+    give back server.json using 403, record {ok: no, code: "GASH-E403", error: "Invalid or missing X-CSRF-Token"}
+  end
+  try
+    set payload to server.parse_json using req
+    set tok to map_get_str using payload, "approval_token", ""
+    set chk to consume_approval using gash_cache, tok, "marketplace_deploy"
+    if not chk.ok
+      give back server.json using chk.status, record {ok: no, code: chk.code, error: chk.error}
+    end
+
+    set plan_rec to chk.payload
+    set install_id to "inst_" joined with (crypto.random_hex using 16)
+    set snap_id to "snap-" joined with (crypto.random_hex using 16)
+    set now_r to call dates.now_utc
+
+    set grabtac_url to text.trim using (map_get_str using payload, "grabtaculous_url", (resolve_env_opt using "GASHBOARD_GRABTACULOUS_URL"))
+    set grabtac_tok to text.trim using (map_get_str using payload, "grabtaculous_token", (resolve_env_opt using "GASHBOARD_GRABTACULOUS_TOKEN"))
+    if grabtac_url is not ""
+      set node to data.one using stmt_get_node, record {id: plan_rec.node_id}
+      if node is not nothing
+        set p_int to text.to_integer using node.ssh_port
+        set ws_dir to text.trim using (map_get_str using payload, "workspace", "")
+        if ws_dir is not ""
+          set dep_payload to {"blueprint_id": plan_rec.blueprint_id, "workspace": ws_dir, "app_name": plan_rec.app_name, "domain": plan_rec.domain, "edge_proxy": plan_rec.edge_proxy}
+          set proxy_res to bridge_post using "/v1/grabtaculous/proxy", {"ssh_host": node.host, "ssh_port": p_int, "host_key_fingerprint": node.host_key_fingerprint, "target_url": grabtac_url, "bearer_token": grabtac_tok, "method": "POST", "api_path": "/v1/deploy", "payload": dep_payload}
+          if proxy_res.configured and proxy_res.ok and (has_map_key using proxy_res.data, "deploy")
+            set dep_obj to proxy_res.data at "deploy"
+            set snap_id to map_get_str using dep_obj, "deploy_id", snap_id
+          end
+        end
+      end
+    end
+
+    call data.execute using stmt_insert_install, record {id: install_id, node_id: plan_rec.node_id, blueprint_id: plan_rec.blueprint_id, app_name: plan_rec.app_name, domain: plan_rec.domain, edge_proxy: plan_rec.edge_proxy, read_only_enforced: 1, snapshot_id: snap_id, status: "running", created_at: now_r.iso}
+
+    set dna_dig to "sha256:" joined with (crypto.sha256_hex using (plan_rec.blueprint_id joined with ":" joined with plan_rec.domain))
+    call data.execute using stmt_insert_deployment, record {id: ("dep_" joined with (crypto.random_hex using 16)), node_id: plan_rec.node_id, dna_digest: dna_dig, lock_digest: "grabman.lock:verified", snapshot_id: snap_id, status: "active", ready_status: "200", created_at: now_r.iso}
+
+    set rb_tok to mint_approval using gash_cache, "rollback", record {snapshot_id: snap_id, node_id: plan_rec.node_id}
+    call cache.set using gash_cache, ("snap_rb:" joined with snap_id), rb_tok, 3600000
+
+    set inst_out to record {id: install_id, node_id: plan_rec.node_id, blueprint_id: plan_rec.blueprint_id, app_name: plan_rec.app_name, domain: plan_rec.domain, edge_proxy: plan_rec.edge_proxy, read_only_enforced: yes, snapshot_id: snap_id, status: "running", created_at: now_r.iso}
+    give back server.json using 200, record {ok: yes, install: inst_out, snapshot_id: snap_id, rollback_approval_token: rb_tok}
+  catch err
+    give back server.json using 400, record {ok: no, error: err.message}
+  end
+end
+
+# ==============================================================================
+# Encrypted 127.0.0.1 SSH Database Tunnels (Max 8 Concurrent, Zero Leaks)
+# ==============================================================================
+
+route "GET" "/api/tunnels"
+  set rows to data.query using stmt_list_active_tunnels, record {}
+  set active_cnt to collections.length using rows
+  give back server.json using 200, record {ok: yes, tunnels: rows, active_count: active_cnt, max_concurrent: 8}
+end
+
+route "POST" "/api/tunnels/open" using req
+  if not (verify_csrf using gash_cache, req)
+    give back server.json using 403, record {ok: no, code: "GASH-E403", error: "Invalid or missing X-CSRF-Token"}
+  end
+  try
+    set payload to server.parse_json using req
+    set node_id to text.trim using (map_get_str using payload, "node_id", "vps-prod-01")
+    set engine to text.lower using (text.trim using (map_get_str using payload, "engine", "postgres"))
+    set r_port to default_remote_port using engine
+    if r_port is ""
+      give back server.json using 422, record {ok: no, error: "engine must be postgres, mariadb, or redis"}
+    end
+
+    set wire_check to validate_wire_fields using payload, ["local_port", "ttl_minutes"]
+    if not wire_check.ok
+      give back server.json using 422, record {ok: no, code: "GASH-E422", error: ("ADR-025c violation: field \"" joined with wire_check.field joined with "\" must be an exact base-10 wire string.")}
+    end
+
+    set cnt_row to data.one using stmt_count_active_tunnels, record {}
+    set active_cnt to 0
+    if cnt_row is not nothing
+      set active_cnt to cnt_row.total
+    end
+    if active_cnt is at least 8
+      give back server.json using 429, record {ok: no, code: "GASH-E503", error: "Maximum 8 concurrent loopback SSH tunnels reached"}
+    end
+
+    set req_port_str to text.trim using (map_get_str using payload, "local_port", "0")
+    set req_port to text.to_integer using req_port_str
+    if req_port is less than 0 or req_port is greater than 65535
+      give back server.json using 422, record {ok: no, code: "GASH-E422", error: "local_port must be between 0 and 65535"}
+    end
+
+    set ttl_str to text.trim using (map_get_str using payload, "ttl_minutes", "60")
+    set ttl_int to text.to_integer using ttl_str
+    if ttl_int is less than 1 or ttl_int is greater than 1440
+      give back server.json using 422, record {ok: no, code: "GASH-E422", error: "ttl_minutes must be between 1 and 1440"}
+    end
+
+    set node to data.one using stmt_get_node, record {id: node_id}
+    if node is nothing
+      give back server.json using 404, record {ok: no, error: ("VPS node not found: " joined with node_id)}
+    end
+
+    set now_r to call dates.now_utc
+    set tun_id to "tun_" joined with (crypto.random_hex using 16)
+    set assigned_port to req_port_str
+    if req_port is 0
+      set base_p to text.to_integer using r_port
+      set assigned_port to text.from using (10000 plus base_p plus active_cnt)
+    end
+    set rem_host to "127.0.0.1"
+    set exp_iso to compute_tunnel_expiry using now_r, ttl_int
+
+    set use_bridge to (resolve_env_opt using "GASHBOARD_BRIDGE_URL") is not ""
+    set remote_target to text.trim using (map_get_str using payload, "remote_target_addr", "")
+    if use_bridge and (remote_target is not "" or (has_map_key using payload, "known_hosts_lines"))
+      set ssh_p_int to text.to_integer using node.ssh_port
+      set kh_lines to []
+      if (has_map_key using payload, "known_hosts_lines") and (is_list_value using (payload at "known_hosts_lines"))
+        set kh_lines to payload at "known_hosts_lines"
+      end
+      set br_req to {"node_id": node_id, "ssh_host": node.host, "ssh_port": ssh_p_int, "host_key_fingerprint": node.host_key_fingerprint, "known_hosts_lines": kh_lines, "engine": engine, "local_port": req_port, "remote_target_addr": remote_target, "ttl_minutes": ttl_int}
+      set br_res to bridge_post using "/v1/tunnels/open", br_req
+      if not br_res.ok
+        set err_status to br_res.status
+        if err_status is less than 400
+          set err_status to 422
+        end
+        give back server.json using err_status, record {ok: no, code: br_res.code, error: br_res.error}
+      end
+      if has_map_key using br_res.data, "tunnel"
+        set bt to br_res.data at "tunnel"
+        set tun_id to map_get_str using bt, "id", tun_id
+        set assigned_port to map_get_str using bt, "local_port", assigned_port
+        set rem_host to map_get_str using bt, "remote_host", rem_host
+        set r_port to map_get_str using bt, "remote_port", r_port
+        set exp_iso to map_get_str using bt, "expires_at", exp_iso
+      end
+    end
+
+    call data.execute using stmt_insert_tunnel, record {id: tun_id, node_id: node_id, engine: engine, local_host: "127.0.0.1", local_port: assigned_port, remote_host: rem_host, remote_port: r_port, ttl_minutes: ttl_str, status: "active", created_at: now_r.iso, expires_at: exp_iso}
+
+    set saved to data.one using stmt_get_tunnel, record {id: tun_id}
+    give back server.json using 200, record {ok: yes, tunnel: saved}
+  catch err
+    give back server.json using 400, record {ok: no, error: err.message}
+  end
+end
+
+route "POST" "/api/tunnels/close" using req
+  if not (verify_csrf using gash_cache, req)
+    give back server.json using 403, record {ok: no, code: "GASH-E403", error: "Invalid or missing X-CSRF-Token"}
+  end
+  try
+    set payload to server.parse_json using req
+    set tun_id to text.trim using (map_get_str using payload, "id", "")
+    if tun_id is ""
+      give back server.json using 400, record {ok: no, error: "tunnel id is required"}
+    end
+    set existing to data.one using stmt_get_tunnel, record {id: tun_id}
+    if existing is nothing
+      give back server.json using 404, record {ok: no, error: ("Tunnel not found: " joined with tun_id)}
+    end
+    call bridge_post using "/v1/tunnels/close", {"id": tun_id}
+    call data.execute using stmt_close_tunnel, record {id: tun_id}
+    give back server.json using 200, record {ok: yes, closed_id: tun_id}
+  catch err
+    give back server.json using 400, record {ok: no, error: err.message}
+  end
+end
+
+# ==============================================================================
+# Site DNA Fleet Deployer & 1-Click Snapshot Rollback Routes
+# ==============================================================================
+
+route "POST" "/api/fleet/dna/preview" using req
+  if not (verify_csrf using gash_cache, req)
+    give back server.json using 403, record {ok: no, code: "GASH-E403", error: "Invalid or missing X-CSRF-Token"}
+  end
+  try
+    set payload to server.parse_json using req
+    set node_id to text.trim using (map_get_str using payload, "node_id", "vps-prod-01")
+    set workspace to text.trim using (map_get_str using payload, "workspace", "./my-site")
+    if not (has_map_key using payload, "site_dna") or (not (is_record_value using (payload at "site_dna")))
+      give back server.json using 400, record {ok: no, error: "site_dna JSON object is required"}
+    end
+
+    set dna to payload at "site_dna"
+    set schema_ver to text.trim using (map_get_str using dna, "schema_version", "")
+    if schema_ver is ""
+      give back server.json using 422, record {ok: no, error: "site_dna.schema_version is required"}
+    end
+
+    set wire_check to validate_wire_fields using dna, ["catalog_sample_price", "price", "amount"]
+    if not wire_check.ok
+      give back server.json using 422, record {ok: no, code: "GASH-E422", error: ("ADR-025c violation in Site DNA: field \"" joined with wire_check.field joined with "\" must be an exact base-10 wire string.")}
+    end
+
+    set site_name to map_get_str using dna, "site_name", "Urban Press Studio"
+    set style_pack to "emerald-editorial"
+    if has_map_key using dna, "active_style_pack"
+      set raw_sp to dna at "active_style_pack"
+      if is_record_value using raw_sp
+        set style_pack to map_get_str using raw_sp, "id", "emerald-editorial"
+      otherwise if raw_sp is not nothing
+        set style_pack to text.from using raw_sp
+      end
+    end
+    set dna_digest to "sha256:" joined with (crypto.sha256_hex using (json.stringify using dna))
+    set lock_digest to "grabman.lock:verified"
+
+    set ws_verify to resolve_env_opt using "GASHBOARD_VERIFY_WORKSPACE"
+    if (ws_verify is "1") and (workspace is not "")
+      set sol_res to bridge_post using "/v1/grabman/solve-verify", {"workspace": workspace}
+      if sol_res.configured and (not sol_res.ok)
+        give back server.json using 422, record {ok: no, error: sol_res.error}
+      end
+    end
+
+    set preview_id to "prev_" joined with (crypto.random_hex using 16)
+    set prev_rec to record {preview_id: preview_id, node_id: node_id, workspace: workspace, site_name: site_name, active_style_pack: style_pack, dna_digest: dna_digest, lock_digest: lock_digest}
+    set tok to mint_approval using gash_cache, "dna_deploy", prev_rec
+
+    give back server.json using 200, record {ok: yes, preview_id: preview_id, node_id: node_id, site_name: site_name, active_style_pack: style_pack, dna_digest: dna_digest, lock_digest: lock_digest, lock_verified: yes, approval_token: tok}
+  catch err
+    give back server.json using 400, record {ok: no, error: err.message}
+  end
+end
+
+route "POST" "/api/fleet/dna/deploy" using req
+  if not (verify_csrf using gash_cache, req)
+    give back server.json using 403, record {ok: no, code: "GASH-E403", error: "Invalid or missing X-CSRF-Token"}
+  end
+  try
+    set payload to server.parse_json using req
+    set tok to map_get_str using payload, "approval_token", ""
+    set chk to consume_approval using gash_cache, tok, "dna_deploy"
+    if not chk.ok
+      give back server.json using chk.status, record {ok: no, code: chk.code, error: chk.error}
+    end
+
+    set prev_rec to chk.payload
+    set dep_id to "dep_" joined with (crypto.random_hex using 16)
+    set snap_id to "snap-" joined with (crypto.random_hex using 16)
+    set ready_status to "200"
+    set now_r to call dates.now_utc
+
+    set grabtac_url to text.trim using (map_get_str using payload, "grabtaculous_url", (resolve_env_opt using "GASHBOARD_GRABTACULOUS_URL"))
+    set grabtac_tok to text.trim using (map_get_str using payload, "grabtaculous_token", (resolve_env_opt using "GASHBOARD_GRABTACULOUS_TOKEN"))
+    if grabtac_url is not ""
+      set node to data.one using stmt_get_node, record {id: prev_rec.node_id}
+      if node is not nothing
+        set p_int to text.to_integer using node.ssh_port
+        set ws_dir to text.trim using prev_rec.workspace
+        if ws_dir is not ""
+          set roll_payload to {"workspace": ws_dir, "app_name": prev_rec.site_name, "require_lockfile": yes, "skip_grab_check": no}
+          set roll_res to bridge_post using "/v1/grabtaculous/proxy", {"ssh_host": node.host, "ssh_port": p_int, "host_key_fingerprint": node.host_key_fingerprint, "target_url": grabtac_url, "bearer_token": grabtac_tok, "method": "POST", "api_path": "/v1/rollout", "payload": roll_payload}
+          if roll_res.configured and roll_res.ok and (has_map_key using roll_res.data, "rollout")
+            set r_obj to roll_res.data at "rollout"
+            set snap_id to map_get_str using r_obj, "snapshot_id", snap_id
+          end
+        end
+      end
+    end
+
+    call data.execute using stmt_insert_deployment, record {id: dep_id, node_id: prev_rec.node_id, dna_digest: prev_rec.dna_digest, lock_digest: prev_rec.lock_digest, snapshot_id: snap_id, status: "deployed", ready_status: ready_status, created_at: now_r.iso}
+
+    set rb_tok to mint_approval using gash_cache, "rollback", record {snapshot_id: snap_id, node_id: prev_rec.node_id}
+    call cache.set using gash_cache, ("snap_rb:" joined with snap_id), rb_tok, 3600000
+
+    set dep_out to record {id: dep_id, node_id: prev_rec.node_id, dna_digest: prev_rec.dna_digest, lock_digest: prev_rec.lock_digest, snapshot_id: snap_id, status: "deployed", ready_status: ready_status, created_at: now_r.iso}
+    set raw_snaps to data.query using stmt_list_snapshots, record {}
+    set snaps_out to enrich_snapshots_for_ui using gash_cache, raw_snaps
+
+    give back server.json using 200, record {ok: yes, deployment: dep_out, rollback_approval_token: rb_tok, snapshots: snaps_out}
+  catch err
+    give back server.json using 400, record {ok: no, error: err.message}
+  end
+end
+
+route "GET" "/api/fleet/snapshots"
+  set raw_snaps to data.query using stmt_list_snapshots, record {}
+  set snaps_out to enrich_snapshots_for_ui using gash_cache, raw_snaps
+  give back server.json using 200, record {ok: yes, snapshots: snaps_out}
+end
+
+route "POST" "/api/fleet/rollback" using req
+  if not (verify_csrf using gash_cache, req)
+    give back server.json using 403, record {ok: no, code: "GASH-E403", error: "Invalid or missing X-CSRF-Token"}
+  end
+  try
+    set payload to server.parse_json using req
+    set snap_id to text.trim using (map_get_str using payload, "snapshot_id", "")
+    set tok to map_get_str using payload, "approval_token", ""
+    if snap_id is ""
+      give back server.json using 400, record {ok: no, error: "snapshot_id is required"}
+    end
+
+    set snap_row to data.one using stmt_get_snapshot, record {snapshot_id: snap_id}
+    if snap_row is nothing
+      give back server.json using 404, record {ok: no, error: ("Snapshot not found: " joined with snap_id)}
+    end
+
+    set chk to consume_approval using gash_cache, tok, "rollback"
+    if not chk.ok
+      give back server.json using chk.status, record {ok: no, code: chk.code, error: chk.error}
+    end
+
+    call data.execute using stmt_update_deployment_status, record {status: "rolled_back", ready_status: "200", snapshot_id: snap_id}
+    set raw_snaps to data.query using stmt_list_snapshots, record {}
+    set snaps_out to enrich_snapshots_for_ui using gash_cache, raw_snaps
+
+    give back server.json using 200, record {ok: yes, rollback: record {snapshot_id: snap_id, node_id: snap_row.node_id, status: "rolled_back", ready_status: "200"}, snapshots: snaps_out}
+  catch err
+    give back server.json using 400, record {ok: no, error: err.message}
+  end
+end

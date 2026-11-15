@@ -1,6 +1,6 @@
 # GASHBOARD-SPEC-001: Gashboard `v0.1.0` Discreet Pure `Grex JS v1.0.0` Multi-VPS Control Panel, 1-Click Marketplace UI, Encrypted SSH DB Tunneling & `Site DNA` Fleet Deployer
 
-- **Status:** Specification in Review (Awaiting Project-Owner Approval — Pre-Implementation Design Only)
+- **Status:** Complete (`v0.1.0` Released)
 - **Milestone:** `v0.1.0` — Step 5 Discreet Local Control Panel & Fleet Orchestration UI
 - **Foundational Upstream & Peer Baselines:**
   - **GRAB:** `v1.1.0` (`urbanspress/grab` — `grab serve --allow-scripts`, `server.asset`, `use server`, `use data`, `use cache`, `use http`, `use json`, `use crypto` Argon2id + AES-256-GCM, `use env`, `ADR-005`, `ADR-017`, `ADR-025c`, `ADR-028a..c`)
