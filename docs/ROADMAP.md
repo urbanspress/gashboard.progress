@@ -15,7 +15,7 @@
 
 **Status:** Complete (`v0.1.0` Released — [`specifications/GASHBOARD-SPEC-001.md`](../specifications/GASHBOARD-SPEC-001.md))
 
-Approved Scope:
+Delivered Scope:
 - **Discreet Localhost Control Plane (`127.0.0.1`-Only):** Runs locally on the user's workstation (`GRAB v1.1.0` + `Grex JS v1.0.0` zero-`<div>` UI paired with a `127.0.0.1` Go SSH bridge), eliminating public VPS control-panel login pages (`ADR-005`, `ADR-017`).
 - **Multi-VPS Fleet Inventory & Live Health Telemetry:** Key-authenticated, `known_hosts`-pinned VPS server inventory displaying live `Grisp` worker health, `/_ready` probes, edge TLS domains, and exact `ADR-025c` resource numbers.
 - **1-Click App Marketplace UI:** Point-and-click deployment wizard powered by **Grabtaculous** blueprints—highlighting **`GrabLab CMS v1.0.1 + Grex Theme Builder v1.0.0 + Groxy AI v1.0.0`**, custom domain + Caddy/Nginx/Cloudflare SSL wiring, `--read-only` security preview, and `grabman doctor` preflight validation.
@@ -24,20 +24,31 @@ Approved Scope:
 
 ---
 
-## `v0.2.0` — Fleet Canary Promotion, Scheduled Off-Peak Snapshot Verification & Multi-Server Metrics History
+## `v0.2.0` — Light/Dark Theme Switcher & Built-In phpMyAdmin-Style Visual Database Manager
 
-**Status:** Planned
+**Status:** Specification in Review ([`specifications/GASHBOARD-SPEC-002.md`](../specifications/GASHBOARD-SPEC-002.md))
 
-Planned Scope:
-- One-click **Staging -> Production** `Site DNA` diff & canary rollout promotion across tagged server groups.
-- Encrypted local telemetry retention and off-peak backup integrity checks.
+Proposed Scope:
+- **WCAG AA Light/Dark Theme Switcher:** Reactive **`Grex JS v1.0.0`** theme toggle (`createTheme` / `computeContrastRatio() >= 4.5:1`), persisted in local preferences and SQLite, with zero wrapper `<div>` elements, zero FOUC, and intact `:focus-visible` rings.
+- **Built-In phpMyAdmin-Style Database Manager:** Operates strictly over Gashboard's `known_hosts`-pinned `127.0.0.1` SSH tunnels (`PostgreSQL`, `MariaDB`) or confined local SQLite (never exposing a public phpMyAdmin/Adminer port), featuring a semantic visual schema & table explorer, paginated row browser (`<= 100` rows/page) with exact `ADR-025c` numeric string fidelity, read-only `SELECT`/`EXPLAIN` query runner by default, and `GROXY-SAFE-001` human-in-the-loop write/DDL gates (`X-CSRF-Token` + single-use `approval_token` + Pre-Mutation Snapshot).
 
 ---
 
-## `v1.0.0` — Production Freeze, Desktop Launcher Packaging & Full 6-Layer E2E Verification
+## `v0.3.0` — Namecheap DNS + Auto-HTTPS Wizard
+
+**Status:** Specification in Review ([`specifications/GASHBOARD-SPEC-003.md`](../specifications/GASHBOARD-SPEC-003.md))
+
+Proposed Scope:
+- **Encrypted Namecheap Credential Vault:** Stores Namecheap API User, API Key, and Whitelisted Client IP encrypted at rest in SQLite via **GRAB `v1.1.0`** `crypto.encrypt_aead` (AES-256-GCM)—never rendered in plaintext in the DOM or logs.
+- **1-Click DNS Record Provisioner & Propagation Preflight:** Configures `A`, `AAAA`, and `CNAME` (`@` / `www` / subdomain) records while preserving existing `MX`/`TXT`/`SPF`/`DKIM` email records intact, and verifies live DNS propagation before ACME issuance to avoid Let's Encrypt rate-limit lockouts.
+- **Grabtaculous Auto-HTTPS Wiring & Instant Rollback:** Dispatches Caddy, Nginx + Certbot, or Cloudflare Tunnel configuration to `grabtaculousd` over SSH (keeping Grisp unprivileged on `127.0.0.1:8765-8772`), verifies live HTTPS + `/_ready`, and supports 1-click DNS + Edge config rollback.
+
+---
+
+## `v1.0.0` — Production Freeze, Independent `Orchestrator (Argon)` Multi-Repo Audit & Desktop Launcher Packaging
 
 **Status:** Planned
 
 Planned Scope:
-- Independent `Orchestrator (Argon)` cross-layer security, SSH tunnel, zero-`<div>` DOM, WCAG AA, and rollout/rollback audit across all 6 ecosystem layers.
+- Independent **`Orchestrator (Argon)`** pre-`v1.0.0` cross-layer security, pure-`Grex JS` DOM/accessibility, SSH tunnel, DB manager, and DNS/Auto-HTTPS rollout/rollback audit across all 6 ecosystem layers.
 - Branded release archive, walkthrough PDF, and synchronized `v1.0.0` release on `origin` and `stable` (providing the direct runtime foundation for **Step 6 — Groxy Desk**).
