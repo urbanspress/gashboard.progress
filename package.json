@@ -1,6 +1,6 @@
 {
   "name": "gashboard",
-  "version": "0.2.0",
+  "version": "0.3.0",
   "private": true,
   "type": "module",
   "description": "Discreet Pure Grex JS v1.0.0 Multi-VPS Control Panel, 1-Click Marketplace UI, Encrypted 127.0.0.1 SSH DB Tunneling & Site DNA Fleet Deployer",

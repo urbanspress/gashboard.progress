@@ -5,23 +5,23 @@
 ![GRAB Ecosystem Step 5 — Gashboard](docs/badges/ecosystem-step-5.svg)
 ![v0.1.0 Spec — In Review](docs/badges/spec-in-review.svg)
 
-**Gashboard** is the Discreet Pure **`Grex JS v1.0.0`** Multi-VPS Web Control Panel, 1-Click App Marketplace UI (**GrabLab CMS + Grex Theme Builder + Groxy AI**), Encrypted `127.0.0.1` SSH Database Tunneling Manager, and `Site DNA` Fleet Deployer for **Step 5 of the Post-1.0 GRAB Ecosystem**.
+**Gashboard** is the Discreet Pure **`Grex JS v1.0.0`** Multi-VPS Web Control Panel, 1-Click App Marketplace UI (**GrabLab CMS + Grex Theme Builder + Groxy AI**), Encrypted `127.0.0.1` SSH Database Tunneling Manager, Built-In Visual Database Manager, Namecheap DNS + Auto-HTTPS Wizard, and `Site DNA` Fleet Deployer for **Step 5 of the Post-1.0 GRAB Ecosystem**.
 
-- **Current Status:** `v0.2.0` — **Released** ([`specifications/GASHBOARD-SPEC-002.md`](specifications/GASHBOARD-SPEC-002.md) implemented, verified 100% across all 4 gates, and published on `origin` & `stable`; [`v0.3.0` (`GASHBOARD-SPEC-003.md`)](specifications/GASHBOARD-SPEC-003.md) Approved next).
-- **Walkthrough Guide (PDF):** [`docs/releases/pdf/Gashboard-v0.2.0-Guide.pdf`](docs/releases/pdf/Gashboard-v0.2.0-Guide.pdf)
+- **Current Status:** `v0.3.0` — **Released** ([`specifications/GASHBOARD-SPEC-003.md`](specifications/GASHBOARD-SPEC-003.md) implemented, verified 100% across all 4 gates, and published on `origin` & `stable`; [`v1.0.0`](docs/ROADMAP.md) Independent `Orchestrator (Argon)` Pre-`v1.0.0` Cross-Layer Audit next).
+- **Walkthrough Guide (PDF):** [`docs/releases/pdf/Gashboard-v0.3.0-Guide.pdf`](docs/releases/pdf/Gashboard-v0.3.0-Guide.pdf)
 - **Changelog:** [`CHANGELOG.md`](CHANGELOG.md)
 - **Development Repo (`origin`):** `https://github.com/urbanspress/gashboard.progress`
 - **Production Release Repo (`stable`):** `https://github.com/urbanspress/gashboard.stable`
 
 ---
 
-## Quick Start (`v0.2.0` Local Workstation)
+## Quick Start (`v0.3.0` Local Workstation)
 
 ```powershell
-# 1. Initialize or upgrade the SQLite vault & preferences schema
-grab migrate --db-config grab.data.json --allow-db main:migrate migrations/002_db_manager_and_theme.grab
+# 1. Initialize or upgrade the SQLite vault, preferences & DNS/HTTPS snapshot schema
+grab migrate --db-config grab.data.json --allow-db main:migrate migrations/003_dns_vault.grab
 
-# 2. Start the 127.0.0.1 Go SSH & Visual DB Inspector bridge (with confined SQLite root)
+# 2. Start the 127.0.0.1 Go SSH, Visual DB Inspector & Namecheap DNS/Preflight bridge
 go run ./bridge/cmd/gashboard-bridge --listen 127.0.0.1:9450 --known-hosts $HOME\.ssh\known_hosts --sqlite-root storage
 
 # 3. Start Gashboard strictly on loopback 127.0.0.1:9390
@@ -29,15 +29,15 @@ grab serve --addr 127.0.0.1:9390 --allow-scripts --static public `
   --db-config grab.data.json --allow-db main:read-write `
   --platform-config grab.platform.json --allow-cache gashboard:read-write `
   --allow-read . --allow-write storage `
-  --allow-env GASHBOARD_MASTER_KEY,GASHBOARD_BRIDGE_URL,GASHBOARD_BRIDGE_TOKEN,GASHBOARD_GRABTACULOUS_URL,GASHBOARD_GRABTACULOUS_TOKEN `
+  --allow-env GASHBOARD_MASTER_KEY,GASHBOARD_BRIDGE_URL,GASHBOARD_BRIDGE_TOKEN,GASHBOARD_GRABTACULOUS_URL,GASHBOARD_GRABTACULOUS_TOKEN,GASHBOARD_UPSTREAM_READY_URL,GASHBOARD_HTTPS_PROBE_URL `
   --allow-net 127.0.0.1:9450,127.0.0.1:9440 src/gashboard.grab
 ```
 
-Open `http://127.0.0.1:9390/gashboard` in your browser. For plain-English setup, theme switcher, Visual DB Manager, and SSH tunnel instructions, see [`docs/releases/pdf/Gashboard-v0.2.0-Guide.pdf`](docs/releases/pdf/Gashboard-v0.2.0-Guide.pdf).
+Open `http://127.0.0.1:9390/gashboard` in your browser. For plain-English setup, Namecheap DNS + Auto-HTTPS Wizard, Visual DB Manager, and SSH tunnel instructions, see [`docs/releases/pdf/Gashboard-v0.3.0-Guide.pdf`](docs/releases/pdf/Gashboard-v0.3.0-Guide.pdf).
 
 ---
 
-## Core Architecture Pillars (`v0.2.0`)
+## Core Architecture Pillars (`v0.3.0`)
 
 1. **Zero Public VPS Login or Database Admin Ports (`ADR-005`, `ADR-017`):**
    - **Gashboard** lives purely on your local workstation (`127.0.0.1`), managing remote servers via encrypted, `known_hosts`-pinned SSH connections to **Grabtaculous** and opening tunneled database sessions over `127.0.0.1`—eliminating public control-panel and phpMyAdmin login surfaces.
@@ -49,6 +49,8 @@ Open `http://127.0.0.1:9390/gashboard` in your browser. For plain-English setup,
    - Deploy hardened `--read-only` **GrabLab CMS `v1.0.1` + Grex Theme Builder `v1.0.0` + Groxy AI `v1.0.0`** stacks (and curated companion apps) with automatic **Caddy** / **Nginx** / **Cloudflare Tunnel** SSL and `grabman doctor` preflight verification.
 5. **Encrypted SSH Database Tunneling (`127.0.0.1`) & `Site DNA` Fleet Deployer:**
    - Create instant loopback `127.0.0.1` SSH tunnels to remote PostgreSQL, MariaDB, or Redis instances, import portable **Groxy AI** `Site DNA` snapshots validated by **`grabman`**, execute zero-downtime `Grisp` rollouts via **Grabtaculous**, and roll back in 1 click to Pre-Deploy Snapshots.
+6. **Namecheap DNS + Auto-HTTPS Wizard (`v0.3.0`):**
+   - Stores Namecheap API credentials encrypted at rest via `use crypto` (`AES-256-GCM`), previews and applies `A`/`AAAA`/`CNAME` updates while preserving all `MX`/`TXT`/`SPF`/`DKIM` email records intact, enforces live DNS propagation preflight (`422 GASH-E422`) to prevent Let's Encrypt rate-limit lockouts, wires Caddy/Nginx/Cloudflare Tunnel via **Grabtaculous**, verifies `/_ready`, and supports 1-click Edge + DNS rollback.
 
 ---
 
@@ -70,6 +72,8 @@ Open `http://127.0.0.1:9390/gashboard` in your browser. For plain-English setup,
 - [Agent Rules (`AGENTS.md`)](AGENTS.md)
 - [Engineering Invariants (`GASHBOARD-EXPERT.md`)](GASHBOARD-EXPERT.md)
 - [`v0.1.0` Specification (`specifications/GASHBOARD-SPEC-001.md`)](specifications/GASHBOARD-SPEC-001.md)
+- [`v0.2.0` Specification (`specifications/GASHBOARD-SPEC-002.md`)](specifications/GASHBOARD-SPEC-002.md)
+- [`v0.3.0` Specification (`specifications/GASHBOARD-SPEC-003.md`)](specifications/GASHBOARD-SPEC-003.md)
 - [Roadmap (`docs/ROADMAP.md`)](docs/ROADMAP.md)
 - [Handoff Log (`HANDOFF.md`)](HANDOFF.md)
 - [License (`LICENSE` — MIT)](LICENSE)

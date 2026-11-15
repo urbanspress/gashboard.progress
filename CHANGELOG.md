@@ -6,6 +6,28 @@ The format follows Semantic Versioning (`MAJOR.MINOR.PATCH`) and the GRAB Ecosys
 
 ---
 
+## [0.3.0] - 2026-11-15
+
+### Added
+- **Encrypted Namecheap Credential Vault (`migrations/003_dns_vault.grab`, `src/gashboard.grab`):**
+  - Stores Namecheap **API User**, **API Key**, and **Whitelisted Client IPv4** encrypted at rest in SQLite using **GRAB `v1.1.0`** `crypto.encrypt_aead` (`AES-256-GCM` `v1:...` ciphertexts).
+  - Never returns plaintext secrets or full client IPs in API responses (`GET /api/dns/namecheap/status`), DOM elements, or server logs (`api_user_masked` + `client_ip_masked` only, and immediate browser input clearing after save).
+- **Email-Safe Namecheap DNS Diff & 1-Click Provisioner (`bridge/internal/dns/namecheap.go`, `bridge/cmd/gashboard-bridge/`, `public/gashboard/dns-https-wizard.js`):**
+  - Enforces SSRF protection (`403 GASH-E501`) restricting Namecheap calls strictly to official Namecheap XML API endpoints or loopback test endpoints.
+  - Fetches live domain records via `namecheap.domains.dns.getHosts`, merges `A`/`AAAA`/`CNAME` updates while preserving every existing `MX`, `TXT` (`SPF`, `_dmarc`, `_domainkey` / `DKIM`), `SRV`, and unrelated host record byte-identical (`AssertEmailRecordsPreserved`), and captures a SHA-256 JSON pre-change snapshot before calling `setHosts`.
+  - Pure **`Grex JS v1.0.0`** wizard (`divCount === 0`, `innerHTMLWriteCount === 0`, `100%` WCAG AA contrast) enforcing `ADR-025c` exact base-10 wire strings for `ttl`, `preserved_email_count`, `preserved_other_count`, and `workers`.
+- **Live DNS Propagation Preflight & Grabtaculous Auto-HTTPS + 1-Click Rollback (`bridge/internal/dns/preflight.go`, `/api/dns/propagation/check`, `/api/https/*`):**
+  - Queries DNS resolvers (`CheckPropagation`) prior to ACME certificate issuance, blocking `/api/https/plan` & `/api/https/apply` with `422 GASH-E422` until the target domain resolves cleanly to the destination VPS IP (avoiding Let's Encrypt rate-limit lockouts; cleanly bypassed only in `cloudflare-tunnel` mode).
+  - Wires **Caddy**, **Nginx**, or **Cloudflare Tunnel** via **Grabtaculous** `POST /v1/deploy` (keeping `Grisp` unprivileged on `127.0.0.1:8765-8772`), verifies loopback `/_ready === 200` + optional TLS handshake, and provides 1-click Edge Snapshot + Namecheap DNS rollback behind `X-CSRF-Token` (`403`) and single-use `approval_token` (`403`/`409` replay rejection).
+
+### Verification
+- **Gate 1 (GRAB & Format Parity):** `grab check` (`src/gashboard.grab` + `001`–`003` migrations) + canonical `grab format` byte-for-byte parity + template probe + zero `<div>`/`innerHTML` scans — **100% Pass**.
+- **Gate 2 (Unit, Zero-`<div>` DOM, WCAG AA & Contracts):** `node --test tests/*.test.js` (`7/7` pass) verifying Light/Dark `>= 4.5:1` contrast, zero `<div>`/`innerHTML`, secret redaction in DOM, `MX`/`TXT`/`SPF`/`DKIM` preservation, propagation blocking, and 1-click rollback + `409` replay rejection — **100% Pass**.
+- **Gate 3 (Go Bridge):** `go build ./...`, `go test -count=1 ./...` (including mock Namecheap XML, loopback UDP DNS propagation, TLS probe, and HTTP route tests), and `govulncheck ./...` (`0` vulnerabilities) — **100% Pass**.
+- **Gate 4 (Live 6-Layer E2E Integration):** `python tests/integration_e2e.py` verifying `v1:...` SQLite encryption, `MX`/`SPF`/`DMARC`/`DKIM` preservation, pre-propagation `422 GASH-E422` block -> cutover propagation pass -> live Grabtaculous `deploy/Caddyfile` + `/_ready === 200` -> 1-click Edge + DNS rollback -> `409` replay rejection, and clean `git status` across all 7 peer repos — **100% Pass**.
+
+---
+
 ## [0.2.0] - 2026-11-15
 
 ### Added

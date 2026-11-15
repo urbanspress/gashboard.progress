@@ -51,7 +51,7 @@ test("vendored Grex JS v1.0.0 runtime & manifest match C:\\Development\\grex-js\
 });
 
 test("ADR-025c exact base-10 numeric wire validation rejects floats and precision drift", () => {
-  assert.equal(GASHBOARD_VERSION, "0.2.0");
+  assert.equal(GASHBOARD_VERSION, "0.3.0");
   assert.equal(isExactDecimalString("1000.00"), true);
   assert.equal(isExactDecimalString("12345678901234567890.1234"), true);
   assert.equal(isExactDecimalString("9007199254740993"), true);
@@ -89,9 +89,20 @@ test("ADR-025c exact base-10 numeric wire validation rejects floats and precisio
   const badRes = assertExactWireNumbers({
     cpu_pct: 14.25,
     nested: { price: "19.990000000000002" },
+    ttl: 300,
+    preserved_email_count: 2,
+    workers: 4,
   });
   assert.equal(badRes.ok, false);
-  assert.deepEqual(badRes.invalidKeys, ["cpu_pct", "nested.price"]);
+  assert.deepEqual(badRes.invalidKeys, ["cpu_pct", "nested.price", "ttl", "preserved_email_count", "workers"]);
+
+  const okDnsRes = assertExactWireNumbers({
+    ttl: "300",
+    preserved_email_count: "3",
+    preserved_other_count: "1",
+    workers: "2",
+  });
+  assert.equal(okDnsRes.ok, true);
 });
 
 test("SSH fingerprint validator & tunnel hint generator never leak credentials", () => {

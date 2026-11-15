@@ -1,9 +1,9 @@
 /**
- * Gashboard v0.2.0 — Exact-Decimal Wire & CSRF-Aware API Client (ADR-025c).
+ * Gashboard v0.3.0 — Exact-Decimal Wire & CSRF-Aware API Client (ADR-025c).
  * Preserves base-10 GrabDecimal/GrabInteger strings without IEEE-754 float coercion.
  */
 
-export const GASHBOARD_VERSION = "0.2.0";
+export const GASHBOARD_VERSION = "0.3.0";
 
 const EXACT_DECIMAL_RE = /^-?\d+(?:\.\d+)?$/;
 const FLOAT_DRIFT_RE = /(?:0{5,}|9{5,})\d$/;
@@ -49,6 +49,10 @@ export function assertExactWireNumbers(
     "row_count",
     "affected_rows",
     "pre_row_count",
+    "ttl",
+    "preserved_email_count",
+    "preserved_other_count",
+    "workers",
   ])
 ) {
   const invalidKeys = [];

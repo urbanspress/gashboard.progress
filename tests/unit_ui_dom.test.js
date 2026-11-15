@@ -24,6 +24,10 @@ function createMockFetch(csrfExpected) {
     { id: "9007199254740995", sku: "SKU-BETA", amount_exact: "99.9500", qty: "7" },
   ];
   let reqCount = 0;
+  let dnsVault = { configured: false, provider: "namecheap", api_user_masked: "", client_ip_masked: "", client_ip: "", sandbox: true, vault_cipher: "AES-256-GCM", api_key_configured: false };
+  const dnsSnapshots = [];
+  const httpsRollouts = [];
+  const dnsPropState = { propagated: false };
 
   return async (url, init = {}) => {
     reqCount += 1;
@@ -431,6 +435,182 @@ function createMockFetch(csrfExpected) {
           }),
       };
     }
+    if (url === "/api/dns/namecheap/status" && method === "GET") {
+      return { ok: true, status: 200, text: async () => JSON.stringify({ ok: true, ...dnsVault }) };
+    }
+    if (url === "/api/dns/namecheap/save" && method === "POST") {
+      if (!body.api_user || !body.api_key || !body.client_ip) {
+        return { ok: false, status: 422, text: async () => JSON.stringify({ ok: false, code: "GASH-E422", error: "Missing Namecheap fields" }) };
+      }
+      dnsVault = {
+        configured: true,
+        provider: "namecheap",
+        api_user_masked: `${body.api_user.slice(0, 2)}***${body.api_user.slice(-2)}`,
+        client_ip_masked: "203.0.***.5",
+        client_ip: "203.0.***.5",
+        sandbox: Boolean(body.sandbox),
+        vault_cipher: "AES-256-GCM",
+        api_key_configured: true,
+      };
+      return { ok: true, status: 200, text: async () => JSON.stringify({ ok: true, ...dnsVault }) };
+    }
+    if (url === "/api/dns/plan" && method === "POST") {
+      const tok = `apprv-dns-${reqCount}`;
+      const plan = {
+        domain: body.domain || "example.com",
+        root_domain: "example.com",
+        subdomain: body.subdomain || "@",
+        target_ip: body.target_ip || "198.51.100.24",
+        ttl: String(body.ttl || "300"),
+        preserved_email_count: "2",
+        preserved_other_count: "1",
+        backup_sha256: "sha256:dnsbackup123",
+        plain_summary: "Configure example.com (A -> 198.51.100.24) while preserving 2 email/TXT records and 1 unrelated host record intact.",
+        diffs: [
+          { action: "keep_email", name: "@", type: "MX", previous_address: "mail.protonmail.ch.", next_address: "mail.protonmail.ch.", ttl: "1800", reason: "Preserved intact (email/verification record)" },
+          { action: "keep_email", name: "@", type: "TXT", previous_address: "v=spf1 include:_spf.protonmail.ch ~all", next_address: "v=spf1 include:_spf.protonmail.ch ~all", ttl: "1800", reason: "Preserved intact (email/verification record)" },
+          { action: "update", name: "@", type: "A", previous_address: "198.51.100.10", next_address: body.target_ip || "198.51.100.24", ttl: String(body.ttl || "300"), reason: "Point web root to target VPS IP" },
+        ],
+      };
+      approvals.set(tok, { used: false, kind: "dns_apply", plan, body });
+      return { ok: true, status: 200, text: async () => JSON.stringify({ ok: true, plan_id: `dnsplan-${reqCount}`, plan, approval_token: tok }) };
+    }
+    if (url === "/api/dns/apply" && method === "POST") {
+      const rec = approvals.get(body.approval_token);
+      if (!rec || rec.kind !== "dns_apply") {
+        return { ok: false, status: 403, text: async () => JSON.stringify({ ok: false, code: "GASH-E403", error: "Invalid DNS approval_token" }) };
+      }
+      if (rec.used) {
+        return { ok: false, status: 409, text: async () => JSON.stringify({ ok: false, code: "GASH-E409", error: "approval_token has already been consumed" }) };
+      }
+      rec.used = true;
+      const snapId = `dnssnap-${reqCount}`;
+      const rbTok = `apprv-dns-rb-${reqCount}`;
+      approvals.set(rbTok, { used: false, kind: "dns_rollback", snapshot_id: snapId, domain: rec.plan.domain });
+      const snap = {
+        id: snapId,
+        domain: rec.plan.domain,
+        subdomain: rec.plan.subdomain,
+        target_ip: rec.plan.target_ip,
+        preserved_email_count: "2",
+        status: "applied",
+        rollback_token: rbTok,
+      };
+      dnsSnapshots.unshift(snap);
+      return { ok: true, status: 200, text: async () => JSON.stringify({ ok: true, dns_snapshot_id: snapId, snapshot: snap, result: rec.plan, rollback_approval_token: rbTok, snapshots: dnsSnapshots }) };
+    }
+    if (url === "/api/dns/snapshots" && method === "GET") {
+      return { ok: true, status: 200, text: async () => JSON.stringify({ ok: true, snapshots: dnsSnapshots, rollouts: httpsRollouts }) };
+    }
+    if (url === "/api/dns/rollback" && method === "POST") {
+      const rec = approvals.get(body.approval_token);
+      if (!rec || rec.kind !== "dns_rollback") {
+        return { ok: false, status: 403, text: async () => JSON.stringify({ ok: false, code: "GASH-E403", error: "Invalid DNS rollback token" }) };
+      }
+      if (rec.used) {
+        return { ok: false, status: 409, text: async () => JSON.stringify({ ok: false, code: "GASH-E409", error: "DNS rollback token already consumed" }) };
+      }
+      rec.used = true;
+      const snap = dnsSnapshots.find((s) => s.id === body.dns_snapshot_id);
+      if (snap) {
+        snap.status = "rolled_back";
+        delete snap.rollback_token;
+      }
+      return { ok: true, status: 200, text: async () => JSON.stringify({ ok: true, rollback: { dns_snapshot_id: body.dns_snapshot_id, domain: snap?.domain, status: "rolled_back" }, snapshots: dnsSnapshots }) };
+    }
+    if (url === "/api/dns/propagation/check" && method === "POST") {
+      const propagated = dnsPropState.propagated || body.edge_proxy === "cloudflare-tunnel";
+      return {
+        ok: true,
+        status: 200,
+        text: async () =>
+          JSON.stringify({
+            ok: true,
+            propagation: {
+              domain: body.domain,
+              expected_ip: body.expected_ip,
+              propagated,
+              message: propagated
+                ? `DNS propagation verified for ${body.domain} -> ${body.expected_ip}`
+                : `DNS not propagated yet for ${body.domain}: Let's Encrypt issuance blocked.`,
+            },
+          }),
+      };
+    }
+    if (url === "/api/https/plan" && method === "POST") {
+      if (!dnsPropState.propagated && body.edge_proxy !== "cloudflare-tunnel") {
+        return { ok: false, status: 422, text: async () => JSON.stringify({ ok: false, code: "GASH-E422", error: "DNS has not propagated yet: blocking Let's Encrypt issuance to prevent rate-limit lockouts." }) };
+      }
+      const tok = `apprv-https-${reqCount}`;
+      const plan = {
+        plan_id: `hplan-${reqCount}`,
+        node_id: body.node_id,
+        domain: body.domain,
+        expected_ip: body.expected_ip,
+        edge_proxy: body.edge_proxy || "caddy",
+        workspace: body.workspace || "./site",
+        dns_snapshot_id: body.dns_snapshot_id || "",
+        workers: String(body.workers || "2"),
+      };
+      approvals.set(tok, { used: false, kind: "https_apply", plan });
+      return { ok: true, status: 200, text: async () => JSON.stringify({ ok: true, ready_for_tls: true, propagation: { propagated: true, message: `Verified ${body.domain} -> ${body.expected_ip}` }, plan, approval_token: tok }) };
+    }
+    if (url === "/api/https/apply" && method === "POST") {
+      const rec = approvals.get(body.approval_token);
+      if (!rec || rec.kind !== "https_apply") {
+        return { ok: false, status: 403, text: async () => JSON.stringify({ ok: false, code: "GASH-E403", error: "Invalid HTTPS approval_token" }) };
+      }
+      if (rec.used) {
+        return { ok: false, status: 409, text: async () => JSON.stringify({ ok: false, code: "GASH-E409", error: "HTTPS approval_token already consumed" }) };
+      }
+      rec.used = true;
+      const rId = `https-${reqCount}`;
+      const rbTok = `apprv-https-rb-${reqCount}`;
+      approvals.set(rbTok, { used: false, kind: "https_rollback", rollout_id: rId });
+      const ro = {
+        id: rId,
+        node_id: rec.plan.node_id,
+        domain: rec.plan.domain,
+        edge_proxy: rec.plan.edge_proxy,
+        dns_snapshot_id: rec.plan.dns_snapshot_id,
+        ready_status: "200",
+        tls_verified: 1,
+        status: "active",
+        rollback_token: rbTok,
+      };
+      httpsRollouts.unshift(ro);
+      return { ok: true, status: 200, text: async () => JSON.stringify({ ok: true, rollout: ro, verify: { ready_status: "200", tls_verified: true }, rollback_approval_token: rbTok, rollouts: httpsRollouts }) };
+    }
+    if (url === "/api/https/rollback" && method === "POST") {
+      const rec = approvals.get(body.approval_token);
+      if (!rec || rec.kind !== "https_rollback") {
+        return { ok: false, status: 403, text: async () => JSON.stringify({ ok: false, code: "GASH-E403", error: "Invalid HTTPS rollback token" }) };
+      }
+      if (rec.used) {
+        return { ok: false, status: 409, text: async () => JSON.stringify({ ok: false, code: "GASH-E409", error: "HTTPS rollback token already consumed" }) };
+      }
+      rec.used = true;
+      const ro = httpsRollouts.find((r) => r.id === body.rollout_id);
+      if (ro) {
+        ro.status = "rolled_back";
+        delete ro.rollback_token;
+        if (body.rollback_dns && body.dns_approval_token && ro.dns_snapshot_id) {
+          const dRec = approvals.get(body.dns_approval_token);
+          assert.ok(dRec && !dRec.used && dRec.kind === "dns_rollback");
+          dRec.used = true;
+          const dSnap = dnsSnapshots.find((s) => s.id === ro.dns_snapshot_id);
+          if (dSnap) {
+            dSnap.status = "rolled_back";
+            delete dSnap.rollback_token;
+          }
+        }
+      }
+      return { ok: true, status: 200, text: async () => JSON.stringify({ ok: true, rollback: { rollout_id: body.rollout_id, status: "rolled_back" }, rollouts: httpsRollouts, dns_snapshots: dnsSnapshots }) };
+    }
+    if (url === "/__test/set_propagated" && method === "POST") {
+      dnsPropState.propagated = Boolean(body.propagated);
+      return { ok: true, status: 200, text: async () => JSON.stringify({ ok: true }) };
+    }
     throw new Error(`Unexpected mock request: ${method} ${url}`);
   };
 }
@@ -447,6 +627,7 @@ test("templates and custom UI JS modules contain zero <div> tags and zero unsafe
     "marketplace.js",
     "tunnels.js",
     "fleet-dna.js",
+    "dns-https-wizard.js",
     "db-manager.js",
     "dashboard.js",
   ];
@@ -477,11 +658,12 @@ test("Gashboard dashboard mounts with 0 <div>s, 0 innerHTML writes, Light/Dark W
   doc.body.appendChild(root);
 
   const csrfToken = "csrf-unit-test-token";
+  const mockFetchImpl = createMockFetch(csrfToken);
   const handle = mountGashboardDashboard({
     root,
     document: doc,
     csrfToken,
-    fetchImpl: createMockFetch(csrfToken),
+    fetchImpl: mockFetchImpl,
   });
 
   const audit = handle.auditDomSafety();
@@ -545,6 +727,46 @@ test("Gashboard dashboard mounts with 0 <div>s, 0 innerHTML writes, Light/Dark W
   assert.equal(mutExec.execution.affected_rows, "1");
   const restRes = await handle.dbManager.restoreSnapshot(mutPlan.snapshot_id, mutExec.restore_approval_token);
   assert.equal(restRes.restore.restored_rows, "2");
+
+  // Namecheap DNS + Auto-HTTPS Wizard flow
+  const rawSecretKey = "nc-super-secret-apikey-9876";
+  doc.getElementById("gash-nc-api-user").value = "aliceops";
+  doc.getElementById("gash-nc-api-key").value = rawSecretKey;
+  doc.getElementById("gash-nc-client-ip").value = "203.0.113.5";
+  const vaultSaveRes = await handle.dnsWizard.saveCredentials();
+  assert.equal(vaultSaveRes.configured, true);
+  assert.equal(vaultSaveRes.api_user_masked, "al***ps");
+  assert.equal(doc.getElementById("gash-nc-api-key").value, "", "Plaintext API key input must be cleared immediately");
+  assert.equal(doc.getElementById("gash-nc-vault-status").textContent.includes(rawSecretKey), false, "Secret API key must never appear in DOM");
+  assert.match(doc.getElementById("gash-nc-vault-status").textContent, /al\*\*\*ps/);
+
+  const dnsPlanRes = await handle.dnsWizard.previewDns({ domain: "example.com", target_ip: "198.51.100.24", ttl: "300" });
+  assert.equal(dnsPlanRes.plan.preserved_email_count, "2");
+  assert.equal(dnsPlanRes.plan.diffs.some((d) => d.type === "MX" && d.action === "keep_email"), true);
+
+  const dnsApplyRes = await handle.dnsWizard.applyDns();
+  assert.ok(dnsApplyRes.dns_snapshot_id && dnsApplyRes.rollback_approval_token);
+
+  // Propagation guard blocks HTTPS planning prior to propagation (prevents Let's Encrypt lockouts)
+  await assert.rejects(() => handle.dnsWizard.planHttps({ domain: "example.com", expected_ip: "198.51.100.24", edge_proxy: "caddy" }), /rate-limit lockouts|not propagated/i);
+
+  // Flip simulated DNS propagation to resolved and complete Caddy Auto-HTTPS + 1-Click Rollback + 409 Replay guard
+  await mockFetchImpl("/__test/set_propagated", {
+    method: "POST",
+    headers: { "X-CSRF-Token": csrfToken },
+    body: JSON.stringify({ propagated: true }),
+  });
+  const propRes = await handle.dnsWizard.checkPropagation({ domain: "example.com", expected_ip: "198.51.100.24", edge_proxy: "caddy" });
+  assert.equal(propRes.propagation.propagated, true);
+  const caddyPlan = await handle.dnsWizard.planHttps({ domain: "example.com", expected_ip: "198.51.100.24", edge_proxy: "caddy" });
+  assert.equal(caddyPlan.ready_for_tls, true);
+  const caddyApply = await handle.dnsWizard.applyHttps();
+  assert.equal(caddyApply.rollout.ready_status, "200");
+  assert.equal(caddyApply.rollout.edge_proxy, "caddy");
+  const caddyRb = await handle.dnsWizard.rollbackHttps(caddyApply.rollout.id, caddyApply.rollback_approval_token, dnsApplyRes.rollback_approval_token);
+  assert.equal(caddyRb.rollback.status, "rolled_back");
+  assert.equal(caddyRb.dns_snapshots[0].status, "rolled_back");
+  await assert.rejects(() => handle.dnsWizard.rollbackHttps(caddyApply.rollout.id, caddyApply.rollback_approval_token), /already consumed/i);
 
   // Re-run full DOM audit after all dynamic updates
   const postAudit = auditDom(root);

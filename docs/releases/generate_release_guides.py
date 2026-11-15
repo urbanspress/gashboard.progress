@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-Gashboard v0.2.0 — Plain-English Release Guide HTML & PDF Generator.
+Gashboard v0.3.0 — Plain-English Release Guide HTML & PDF Generator.
 Renders `docs/releases/html/Gashboard-v<VERSION>-Guide.html` and prints it to
 `docs/releases/pdf/Gashboard-v<VERSION>-Guide.pdf` using headless Chrome or Edge.
 """
@@ -83,6 +83,7 @@ def build_html(version: str) -> str:
 
   <h2>1. What Is Included in Gashboard v{version}</h2>
   <ul>
+    <li><strong>Namecheap DNS + Auto-HTTPS Wizard (New in v0.3.0):</strong> Save your Namecheap API credentials once into the encrypted local SQLite vault (<code>AES-256-GCM</code>; never shown in plaintext again). Preview and apply <code>A</code>, <code>AAAA</code>, and <code>CNAME</code> updates in 1 click while automatically keeping all existing <code>MX</code>, <code>TXT</code>, <code>SPF</code>, and <code>DKIM</code> email records intact. A live DNS propagation guard blocks Let's Encrypt certificate requests until your domain resolves to your VPS IP—preventing ACME rate-limit lockouts—then configures Caddy, Nginx, or Cloudflare Tunnel through Grabtaculous with 1-click DNS + Edge rollback.</li>
     <li><strong>Stealth 127.0.0.1 Control Panel (GRAB v1.1.0 + Pure Grex JS v1.0.0):</strong> Refuses public <code>0.0.0.0</code> bindings by default. Contains zero wrapper <code>&lt;div&gt;</code> tags, zero <code>innerHTML</code> writes, 100% WCAG AA accessible contrast, and exact base-10 decimals (<code>ADR-025c</code>).</li>
     <li><strong>WCAG AA Light/Dark Theme Switcher (New in v0.2.0):</strong> Toggle crisp <strong>Light</strong> or <strong>Dark</strong> appearance in the header using <code>Grex JS</code> <code>createTheme</code> (<code>[data-grex-theme]</code>). Preferences save locally and in SQLite so pages open in your chosen theme immediately without white flash (zero FOUC), while maintaining <code>&gt;= 4.5:1</code> contrast and clear keyboard focus outlines.</li>
     <li><strong>Built-In phpMyAdmin-Style Visual Database Manager (New in v0.2.0):</strong> Inspect local SQLite files (confined inside <code>--sqlite-root</code>; blocks path traversal with <code>GRAB-E401</code>) or remote PostgreSQL and MariaDB servers strictly inside your encrypted <code>127.0.0.1</code> SSH tunnels—never exposing phpMyAdmin or database ports publicly. Browse tables, columns, indexes, and foreign keys; paginate up to <code>100</code> rows/page with exact <code>ADR-025c</code> base-10 integers/decimals; run read-only <code>SELECT</code>/<code>EXPLAIN</code> queries safely; and export SQL dumps.</li>
@@ -97,20 +98,27 @@ def build_html(version: str) -> str:
 gashboard-ssh-windows-amd64.exe --listen 127.0.0.1:9391 --known-hosts %USERPROFILE%\\.ssh\\known_hosts --sqlite-root storage</pre>
     </li>
     <li><strong>Initialize / Upgrade Local SQLite Vault &amp; Start Gashboard (Terminal 2):</strong>
-      <pre>grab migrate --db-config grab.data.json --allow-db main:migrate migrations\\002_db_manager_and_theme.grab
+      <pre>grab migrate --db-config grab.data.json --allow-db main:migrate migrations\\003_dns_vault.grab
 set GASHBOARD_MASTER_KEY=replace-with-strong-passphrase
 set GASHBOARD_BRIDGE_URL=http://127.0.0.1:9391
 grab serve --addr 127.0.0.1:9390 --allow-scripts --static public ^
   --db-config grab.data.json --allow-db main:read-write ^
   --platform-config grab.platform.json --allow-cache gashboard:read-write ^
   --allow-read . --allow-write storage ^
-  --allow-env GASHBOARD_MASTER_KEY,GASHBOARD_BRIDGE_URL,GASHBOARD_BRIDGE_TOKEN ^
+  --allow-env GASHBOARD_MASTER_KEY,GASHBOARD_BRIDGE_URL,GASHBOARD_BRIDGE_TOKEN,GASHBOARD_GRABTACULOUS_URL,GASHBOARD_GRABTACULOUS_TOKEN,GASHBOARD_UPSTREAM_READY_URL,GASHBOARD_HTTPS_PROBE_URL ^
   --allow-net 127.0.0.1,localhost src\\gashboard.grab</pre>
     </li>
     <li><strong>Open Your Private Browser Control Panel:</strong> Navigate to <code>http://127.0.0.1:9390/gashboard</code>.</li>
   </ol>
 
   <h2>3. Daily Operator Workflows</h2>
+  <h3>Configuring Namecheap DNS &amp; Auto-HTTPS Without Breaking Email (v0.3.0)</h3>
+  <ol>
+    <li><strong>Step 1 — Save Encrypted Credentials:</strong> Enter your Namecheap API User, API Key, and Whitelisted Client IPv4 into Step 1 of the <strong>Namecheap DNS &amp; Auto-HTTPS Wizard</strong> and click <strong>Save Encrypted Vault Credentials</strong>. Your browser wipes the raw key immediately and shows only a masked summary.</li>
+    <li><strong>Step 2 — Preview Email-Safe Changes:</strong> Pick your destination VPS node, enter your domain and subdomain (<code>@</code> for apex or a prefix like <code>shop</code>), and click <strong>Preview Email-Safe DNS Changes</strong>. Review the plain-English table showing your <code>MX</code>, <code>SPF</code>, and <code>DKIM</code> email records marked as kept intact, then click <strong>Approve &amp; Apply DNS Records</strong>.</li>
+    <li><strong>Step 3 &amp; 4 — Propagation Guard &amp; Auto-HTTPS:</strong> Click <strong>Preflight Propagation &amp; Plan HTTPS</strong>. Until DNS resolvers return your target VPS IP, Gashboard blocks Let's Encrypt issuance (<code>422 GASH-E422</code>) to protect your rate limits. Once propagated (or in Cloudflare Tunnel mode), click <strong>Provision Auto-HTTPS &amp; Verify /_ready</strong>. If you ever need to revert, click <strong>1-Click Edge + DNS Rollback</strong> to restore both Grabtaculous and your prior Namecheap host records together.</li>
+  </ol>
+
   <h3>Switching Light &amp; Dark Themes</h3>
   <p>Click the <strong>Switch to Dark Theme</strong> / <strong>Switch to Light Theme</strong> button in the header. Gashboard stores the preference in SQLite and renders <code>data-grex-theme</code> server-side so refreshes apply your theme immediately with zero flash.</p>
 
@@ -177,7 +185,7 @@ def render_pdf(browser_bin: str, html_path: Path, pdf_path: Path):
 
 def main():
     parser = argparse.ArgumentParser(description="Generate Gashboard HTML & PDF walkthrough release guide.")
-    parser.add_argument("--version", default="0.2.0", help="Release version without leading v (e.g. 0.2.0)")
+    parser.add_argument("--version", default="0.3.0", help="Release version without leading v (e.g. 0.3.0)")
     args = parser.parse_args()
     version = args.version.lstrip("v")
 

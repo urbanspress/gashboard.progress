@@ -4,7 +4,7 @@
  * exact ADR-025c base-10 numeric wire strings, strict known_hosts pinning & DB Manager.
  */
 
-export const GASHBOARD_VERSION = "0.2.0";
+export const GASHBOARD_VERSION = "0.3.0";
 
 import {
   auditAccessibility,
@@ -22,6 +22,7 @@ import { createMarketplacePanel } from "./marketplace.js";
 import { createTunnelsPanel } from "./tunnels.js";
 import { createFleetDnaPanel } from "./fleet-dna.js";
 import { createDbManagerPanel } from "./db-manager.js";
+import { createDnsHttpsWizardPanel } from "./dns-https-wizard.js";
 import { initThemeController, THEME_PALETTES, verifyThemeWcagContrast } from "./theme.js";
 
 export const SAMPLE_VPS_NODES = Object.freeze([
@@ -237,6 +238,7 @@ export function mountGashboardDashboard({
   let marketplacePanel = null;
   let tunnelsPanel = null;
   let fleetDnaPanel = null;
+  let dnsWizardPanel = null;
 
   const refreshAllNodeSelectors = () => {
     setSafeText(statNodesVal, `${nodesSignal.get().length}`);
@@ -244,6 +246,7 @@ export function mountGashboardDashboard({
     if (marketplacePanel) marketplacePanel.refreshNodes();
     if (tunnelsPanel) tunnelsPanel.refreshNodes();
     if (fleetDnaPanel) fleetDnaPanel.refreshNodes();
+    if (dnsWizardPanel) dnsWizardPanel.refreshNodes();
   };
 
   const renderVpsFeedback = () => {
@@ -392,6 +395,9 @@ export function mountGashboardDashboard({
       if (themeRes && themeRes.theme && themeRes.theme !== themeController.getTheme()) {
         await themeController.setTheme(themeRes.theme);
       }
+      if (dnsWizardPanel) {
+        await dnsWizardPanel.loadInitial();
+      }
       return true;
     } catch {
       return false;
@@ -416,12 +422,14 @@ export function mountGashboardDashboard({
   tunnelsPanel = createTunnelsPanel({ doc, api, nodesSignal });
   fleetDnaPanel = createFleetDnaPanel({ doc, api, nodesSignal });
   const dbManagerPanel = createDbManagerPanel({ doc, api });
+  dnsWizardPanel = createDnsHttpsWizardPanel({ doc, api, nodesSignal });
 
   root.appendChild(heroSection);
   root.appendChild(vpsSection);
   root.appendChild(marketplacePanel.element);
   root.appendChild(tunnelsPanel.element);
   root.appendChild(fleetDnaPanel.element);
+  root.appendChild(dnsWizardPanel.element);
   root.appendChild(dbManagerPanel.element);
 
   renderVpsTable();
@@ -435,6 +443,7 @@ export function mountGashboardDashboard({
     marketplace: marketplacePanel,
     tunnels: tunnelsPanel,
     fleetDna: fleetDnaPanel,
+    dnsWizard: dnsWizardPanel,
     dbManager: dbManagerPanel,
     getNodes: () => nodesSignal.get(),
     auditDomSafety() {

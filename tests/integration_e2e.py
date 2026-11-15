@@ -1,18 +1,19 @@
 #!/usr/bin/env python3
 """
-Gashboard v0.2.0 — 4-Gate Cross-Layer End-to-End Verification Suite.
+Gashboard v0.3.0 — 4-Gate Cross-Layer End-to-End Verification Suite.
 Gate 1: Static GRAB check, canonical `grab format` byte-for-byte parity, template probe, zero-<div> / zero-innerHTML scan.
 Gate 2: Node unit, zero-<div> DOM, Light/Dark WCAG AA >= 4.5:1 & contract suite (`node --test tests/*.test.js`).
 Gate 3: Go loopback SSH & DB inspector bridge (`go build ./...`, `go test -count=1 ./...`, `govulncheck ./...`).
 Gate 4: Live multi-process 6-layer integration (theme persistence, 127.0.0.1 tunneled DB + SQLite inspection,
-        ADR-025c wire fidelity, GRAB-E401 confinement, read-only guard, GROXY-SAFE-001 mutation + Pre-Mutation Snapshot
-        rollback, replay 409, and clean git status check across all 7 upstream/peer repos).
+        encrypted Namecheap vault, email-safe DNS diff/apply, UDP DNS propagation gate, Grabtaculous Auto-HTTPS
+        Caddyfile + /_ready verification, 1-click DNS + Edge rollback, replay 409, and clean 7-repo git status).
 """
 
 from __future__ import annotations
 
 import base64
 import hashlib
+import http.server
 import json
 import os
 import re
@@ -25,6 +26,7 @@ import tempfile
 import threading
 import time
 import urllib.error
+import urllib.parse
 import urllib.request
 from pathlib import Path
 
@@ -271,6 +273,142 @@ def start_fake_pg_v3_server() -> tuple[int, threading.Event, threading.Thread]:
     return port, stop_evt, th
 
 
+def start_mock_namecheap_server():
+    """Start a local 127.0.0.1 HTTP mock for Namecheap XML getHosts/setHosts with email-record fixture state."""
+    lock = threading.Lock()
+    state = {
+        "email_type": "CUSTOM",
+        "set_calls": 0,
+        "last_auth": {},
+        "hosts": [
+            {"host_id": "1", "name": "@", "type": "MX", "address": "mail.protonmail.ch.", "mx_pref": "10", "ttl": "1800"},
+            {"host_id": "2", "name": "@", "type": "TXT", "address": "v=spf1 include:_spf.protonmail.ch ~all", "mx_pref": "10", "ttl": "1800"},
+            {"host_id": "3", "name": "protonmail._domainkey", "type": "CNAME", "address": "dkim.protonmail.ch.", "mx_pref": "10", "ttl": "1800"},
+            {"host_id": "4", "name": "_dmarc", "type": "TXT", "address": "v=DMARC1; p=quarantine", "mx_pref": "10", "ttl": "1800"},
+            {"host_id": "5", "name": "@", "type": "A", "address": "198.51.100.10", "mx_pref": "10", "ttl": "300"},
+            {"host_id": "6", "name": "www", "type": "CNAME", "address": "example.com.", "mx_pref": "10", "ttl": "300"},
+        ],
+    }
+
+    class Handler(http.server.BaseHTTPRequestHandler):
+        def log_message(self, format, *args):
+            return
+
+        def do_POST(self):
+            ln = int(self.headers.get("Content-Length", "0"))
+            raw = self.rfile.read(ln).decode("utf-8")
+            form = urllib.parse.parse_qs(raw, keep_blank_values=True)
+            cmd = form.get("Command", [""])[0]
+            with lock:
+                state["last_auth"] = {
+                    "ApiUser": form.get("ApiUser", [""])[0],
+                    "ApiKey": form.get("ApiKey", [""])[0],
+                    "ClientIp": form.get("ClientIp", [""])[0],
+                }
+                if cmd == "namecheap.domains.dns.getHosts":
+                    xml_rows = []
+                    for h in state["hosts"]:
+                        xml_rows.append(
+                            f'<host HostId="{h["host_id"]}" Name="{h["name"]}" Type="{h["type"]}" '
+                            f'Address="{h["address"]}" MXPref="{h["mx_pref"]}" TTL="{h["ttl"]}" />'
+                        )
+                    body = (
+                        '<?xml version="1.0" encoding="utf-8"?>'
+                        '<ApiResponse Status="OK"><Errors />'
+                        '<CommandResponse Type="namecheap.domains.dns.getHosts">'
+                        f'<DomainDNSGetHostsResult Domain="example.com" EmailType="{state["email_type"]}">'
+                        + "".join(xml_rows)
+                        + "</DomainDNSGetHostsResult></CommandResponse></ApiResponse>"
+                    )
+                elif cmd == "namecheap.domains.dns.setHosts":
+                    state["set_calls"] += 1
+                    next_hosts = []
+                    idx = 1
+                    while f"HostName{idx}" in form:
+                        next_hosts.append({
+                            "host_id": str(idx),
+                            "name": form[f"HostName{idx}"][0],
+                            "type": form[f"RecordType{idx}"][0],
+                            "address": form[f"Address{idx}"][0],
+                            "mx_pref": form.get(f"MXPref{idx}", ["10"])[0],
+                            "ttl": form.get(f"TTL{idx}", ["300"])[0],
+                        })
+                        idx += 1
+                    state["hosts"] = next_hosts
+                    body = (
+                        '<?xml version="1.0" encoding="utf-8"?>'
+                        '<ApiResponse Status="OK"><Errors />'
+                        '<CommandResponse Type="namecheap.domains.dns.setHosts">'
+                        '<DomainDNSSetHostsResult Domain="example.com" IsSuccess="true" />'
+                        "</CommandResponse></ApiResponse>"
+                    )
+                else:
+                    self.send_response(400)
+                    self.end_headers()
+                    return
+            payload = body.encode("utf-8")
+            self.send_response(200)
+            self.send_header("Content-Type", "application/xml")
+            self.send_header("Content-Length", str(len(payload)))
+            self.end_headers()
+            self.wfile.write(payload)
+
+    srv = http.server.ThreadingHTTPServer(("127.0.0.1", 0), Handler)
+    port = srv.server_address[1]
+    th = threading.Thread(target=srv.serve_forever, daemon=True)
+    th.start()
+    return f"http://127.0.0.1:{port}", state, lock, srv
+
+
+def start_mock_udp_dns_server(initial_ip: str = "198.51.100.10"):
+    """Start a local 127.0.0.1 UDP DNS responder returning configurable IPv4 A records."""
+    sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+    sock.bind(("127.0.0.1", 0))
+    sock.settimeout(0.2)
+    port = sock.getsockname()[1]
+    stop_evt = threading.Event()
+    answer_ref = {"ip": initial_ip}
+    lock = threading.Lock()
+
+    def serve():
+        try:
+            while not stop_evt.is_set():
+                try:
+                    data, addr = sock.recvfrom(512)
+                except TimeoutError:
+                    continue
+                except OSError:
+                    break
+                if len(data) < 12:
+                    continue
+                pos = 12
+                while pos < len(data) and data[pos] != 0:
+                    ln = data[pos]
+                    if pos + 1 + ln >= len(data):
+                        break
+                    pos += 1 + ln
+                if pos + 5 > len(data):
+                    continue
+                qtype = struct.unpack(">H", data[pos + 1 : pos + 3])[0]
+                question = data[12 : pos + 5]
+                hdr = bytearray(12)
+                hdr[0:2] = data[0:2]
+                struct.pack_into(">HHHHH", hdr, 2, 0x8180, 1, 1 if qtype == 1 else 0, 0, 0)
+                resp = bytearray(hdr) + question
+                if qtype == 1:
+                    with lock:
+                        ip_bytes = socket.inet_aton(answer_ref["ip"])
+                    resp.extend(b"\xc0\x0c\x00\x01\x00\x01\x00\x00\x00\x3c\x00\x04")
+                    resp.extend(ip_bytes)
+                sock.sendto(bytes(resp), addr)
+        finally:
+            sock.close()
+
+    th = threading.Thread(target=serve, daemon=True)
+    th.start()
+    return f"127.0.0.1:{port}", answer_ref, lock, stop_evt, th
+
+
 def gate_1_static_and_format():
     print("[Gate 1] Running grab check, canonical `grab format` parity, template probe, and zero-<div> scans...")
     assert Path(GRAB_BIN).exists(), f"Missing GRAB binary at {GRAB_BIN}"
@@ -278,8 +416,9 @@ def gate_1_static_and_format():
     run_cmd([GRAB_BIN, "check", "--platform-config", "grab.platform.json", "src/gashboard.grab"])
     run_cmd([GRAB_BIN, "check", "migrations/001_gashboard_schema.grab"])
     run_cmd([GRAB_BIN, "check", "migrations/002_db_manager_and_theme.grab"])
+    run_cmd([GRAB_BIN, "check", "migrations/003_dns_vault.grab"])
 
-    for rel in ["src/gashboard.grab", "migrations/001_gashboard_schema.grab", "migrations/002_db_manager_and_theme.grab"]:
+    for rel in ["src/gashboard.grab", "migrations/001_gashboard_schema.grab", "migrations/002_db_manager_and_theme.grab", "migrations/003_dns_vault.grab"]:
         target = REPO_ROOT / rel
         fmt = subprocess.run([GRAB_BIN, "format", rel], cwd=str(REPO_ROOT), stdout=subprocess.PIPE, stderr=subprocess.PIPE)
         assert fmt.returncode == 0, f"grab format {rel} failed: {fmt.stderr.decode('utf-8', 'replace')}"
@@ -306,7 +445,7 @@ def gate_1_static_and_format():
 
     view_html = (REPO_ROOT / "views" / "dashboard.grab.html").read_text(encoding="utf-8")
     assert not re.search(r"<\s*/?\s*div\b", view_html, re.IGNORECASE), "views/dashboard.grab.html contains <div>"
-    for name in ["api-client.js", "theme.js", "marketplace.js", "tunnels.js", "fleet-dna.js", "db-manager.js", "dashboard.js"]:
+    for name in ["api-client.js", "theme.js", "marketplace.js", "tunnels.js", "fleet-dna.js", "dns-https-wizard.js", "db-manager.js", "dashboard.js"]:
         raw = (REPO_ROOT / "public" / "gashboard" / name).read_text(encoding="utf-8")
         stripped = re.sub(r"/\*[\s\S]*?\*/", "", raw)
         stripped = re.sub(r"//.*", "", stripped)
@@ -331,7 +470,7 @@ def gate_3_go_bridge_build_test_vuln():
 
 
 def gate_4_live_6layer_e2e():
-    print("[Gate 4] Running live 6-layer E2E integration (Gashboard v0.2.0 + Bridge DB Inspector + Grabtaculous + grabman + Groxy DNA)...")
+    print("[Gate 4] Running live 6-layer E2E integration (Gashboard v0.3.0 + Namecheap DNS + Auto-HTTPS + Bridge DB + Grabtaculous + grabman + Groxy DNA)...")
     assert Path(GRABMAN_BIN).exists(), f"Missing grabman binary at {GRABMAN_BIN}"
     assert Path(GRABTAC_BIN).exists(), f"Missing grabtaculous binary at {GRABTAC_BIN}"
 
@@ -340,6 +479,9 @@ def gate_4_live_6layer_e2e():
     echo_thread = None
     pg_stop = None
     pg_thread = None
+    nc_srv = None
+    dns_stop = None
+    dns_thread = None
     bridge_proc = None
     grabtac_proc = None
     gash_proc = None
@@ -356,13 +498,17 @@ def gate_4_live_6layer_e2e():
         (app_dir / "storage").mkdir(parents=True, exist_ok=True)
         db_file = app_dir / "storage" / "gashboard.db"
 
-        # Verify v0.1.0 -> v0.2.0 incremental SQLite migration
+        # Verify v0.1.0 -> v0.2.0 -> v0.3.0 incremental SQLite migration
         run_cmd(
             [GRAB_BIN, "migrate", "--db-config", "grab.data.json", "--allow-db", "main:migrate", "migrations/001_gashboard_schema.grab"],
             cwd=app_dir,
         )
         run_cmd(
             [GRAB_BIN, "migrate", "--db-config", "grab.data.json", "--allow-db", "main:migrate", "migrations/002_db_manager_and_theme.grab"],
+            cwd=app_dir,
+        )
+        run_cmd(
+            [GRAB_BIN, "migrate", "--db-config", "grab.data.json", "--allow-db", "main:migrate", "migrations/003_dns_vault.grab"],
             cwd=app_dir,
         )
 
@@ -463,9 +609,11 @@ def gate_4_live_6layer_e2e():
         bridge_bin = tmp_root / ("gashboard-bridge.exe" if os.name == "nt" else "gashboard-bridge")
         run_cmd(["go", "build", "-o", str(bridge_bin), "./bridge/cmd/gashboard-bridge"])
 
-        # Start local TCP echo server + fake PG v3 responder + grabtaculousd + gashboard-bridge + gashboard
+        # Start local TCP echo server + fake PG v3 responder + Mock Namecheap XML + Mock UDP DNS + grabtaculousd + gashboard-bridge + gashboard
         echo_port, echo_stop, echo_thread = start_tcp_echo_server()
         pg_port, pg_stop, pg_thread = start_fake_pg_v3_server()
+        nc_url, nc_state, nc_lock, nc_srv = start_mock_namecheap_server()
+        udp_resolver, dns_ans_ref, dns_lock, dns_stop, dns_thread = start_mock_udp_dns_server("198.51.100.10")
         bridge_port = free_loopback_port()
         grabtac_port = free_loopback_port()
         gash_port = free_loopback_port()
@@ -510,6 +658,8 @@ def gate_4_live_6layer_e2e():
                 "--grabtaculous-bin", GRABTAC_BIN,
                 "--grab-bin", GRAB_BIN,
                 "--sqlite-root", str(app_dir / "storage"),
+                "--namecheap-url", nc_url,
+                "--dns-resolvers", udp_resolver,
             ],
             cwd=str(REPO_ROOT),
             env=bridge_env,
@@ -526,6 +676,7 @@ def gate_4_live_6layer_e2e():
         gash_env["GASHBOARD_BRIDGE_TOKEN"] = bridge_tok
         gash_env["GASHBOARD_GRABTACULOUS_URL"] = grabtac_url
         gash_env["GASHBOARD_GRABTACULOUS_TOKEN"] = grabtac_tok
+        gash_env["GASHBOARD_UPSTREAM_READY_URL"] = f"{grabtac_url}/_ready"
         gash_fh = gash_log_p.open("w", encoding="utf-8")
         log_handles.append(gash_fh)
         gash_proc = subprocess.Popen(
@@ -541,7 +692,7 @@ def gate_4_live_6layer_e2e():
                 "--allow-cache", "gashboard:read-write",
                 "--allow-read", ".",
                 "--allow-write", "storage",
-                "--allow-env", "GASHBOARD_MASTER_KEY,GASHBOARD_BRIDGE_URL,GASHBOARD_BRIDGE_TOKEN,GASHBOARD_GRABTACULOUS_URL,GASHBOARD_GRABTACULOUS_TOKEN",
+                "--allow-env", "GASHBOARD_MASTER_KEY,GASHBOARD_BRIDGE_URL,GASHBOARD_BRIDGE_TOKEN,GASHBOARD_GRABTACULOUS_URL,GASHBOARD_GRABTACULOUS_TOKEN,GASHBOARD_UPSTREAM_READY_URL,GASHBOARD_HTTPS_PROBE_URL",
                 "--allow-net", f"127.0.0.1:{bridge_port},127.0.0.1:{grabtac_port}",
                 "src/gashboard.grab",
             ],
@@ -993,6 +1144,177 @@ def gate_4_live_6layer_e2e():
         )
         assert st == 200 and json.loads(restored_rows_raw)["rows"][0]["amount_exact"] == "12345678901234567890.1234"
 
+        # 4.5 v0.3.0 Namecheap Encrypted Vault, Email-Safe DNS Diff/Apply, Propagation Gate, Auto-HTTPS & 1-Click Rollback
+        nc_secret_key = "nc-e2e-secret-key-030-xyz"
+        nc_secret_user = "ncops_e2e_user"
+        nc_secret_ip = "203.0.113.42"
+        st, _, nc_st_raw = http_request(f"{gash_url}/api/dns/namecheap/status")
+        assert st == 200 and json.loads(nc_st_raw)["configured"] is False
+
+        st, _, nc_save_raw = http_request(
+            f"{gash_url}/api/dns/namecheap/save",
+            method="POST",
+            headers=csrf_hdrs,
+            body={"api_user": nc_secret_user, "api_key": nc_secret_key, "client_ip": nc_secret_ip, "sandbox": True},
+        )
+        assert st == 200, f"Namecheap vault save failed ({st}): {nc_save_raw}"
+        nc_save_doc = json.loads(nc_save_raw)
+        assert nc_save_doc["configured"] is True
+        assert nc_secret_key not in nc_save_raw and nc_secret_user not in nc_save_raw and nc_secret_ip not in nc_save_raw
+
+        st, _, nc_st2_raw = http_request(f"{gash_url}/api/dns/namecheap/status")
+        assert st == 200 and nc_secret_key not in nc_st2_raw and nc_secret_user not in nc_st2_raw
+
+        con = sqlite3.connect(str(db_file))
+        try:
+            vrow = con.execute("SELECT api_user_enc, api_key_enc, client_ip_enc, api_user_masked, client_ip_masked FROM dns_provider_credentials WHERE provider = 'namecheap'").fetchone()
+            assert vrow is not None
+            assert vrow[0].startswith("v1:") and vrow[1].startswith("v1:") and vrow[2].startswith("v1:")
+            assert nc_secret_user not in vrow[0] and nc_secret_key not in vrow[1] and nc_secret_ip not in vrow[2]
+        finally:
+            con.close()
+
+        # DNS Plan preserves MX + SPF TXT + DMARC TXT + DKIM CNAME & updates @ A -> target VPS IP 203.0.113.88
+        target_vps_ip = "203.0.113.88"
+        st, _, bad_ttl_raw = http_request(
+            f"{gash_url}/api/dns/plan",
+            method="POST",
+            headers=csrf_hdrs,
+            body={"node_id": node_id, "domain": "example.com", "target_ip": target_vps_ip, "ttl": 300},
+        )
+        assert st == 422 and json.loads(bad_ttl_raw)["code"] == "GASH-E422"
+
+        st, _, dns_plan_raw = http_request(
+            f"{gash_url}/api/dns/plan",
+            method="POST",
+            headers=csrf_hdrs,
+            body={"node_id": node_id, "domain": "example.com", "target_ip": target_vps_ip, "ttl": "300", "edge_proxy": "caddy", "configure_www": True},
+        )
+        assert st == 200, f"DNS plan failed ({st}): {dns_plan_raw}"
+        dns_plan_doc = json.loads(dns_plan_raw)
+        dns_tok = dns_plan_doc["approval_token"]
+        assert dns_plan_doc["plan"]["preserved_email_count"] == "3"
+        assert nc_state["set_calls"] == 0
+
+        # Apply DNS with single-use token + verify email records intact in Mock Namecheap state + block token replay
+        st, _, dns_apply_raw = http_request(
+            f"{gash_url}/api/dns/apply",
+            method="POST",
+            headers=csrf_hdrs,
+            body={"approval_token": dns_tok},
+        )
+        assert st == 200, f"DNS apply failed ({st}): {dns_apply_raw}"
+        dns_apply_doc = json.loads(dns_apply_raw)
+        dns_snap_id = dns_apply_doc["dns_snapshot_id"]
+        dns_rb_tok = dns_apply_doc["rollback_approval_token"]
+        with nc_lock:
+            assert nc_state["set_calls"] == 1
+            assert nc_state["last_auth"]["ApiUser"] == nc_secret_user
+            assert nc_state["last_auth"]["ApiKey"] == nc_secret_key
+            assert any(h["type"] == "MX" and h["address"] == "mail.protonmail.ch." for h in nc_state["hosts"])
+            assert any(h["type"] == "TXT" and "v=spf1" in h["address"] for h in nc_state["hosts"])
+            assert any(h["name"] == "protonmail._domainkey" and h["address"] == "dkim.protonmail.ch." for h in nc_state["hosts"])
+            assert any(h["name"] == "@" and h["type"] == "A" and h["address"] == target_vps_ip for h in nc_state["hosts"])
+
+        st, _, dns_rep_raw = http_request(
+            f"{gash_url}/api/dns/apply",
+            method="POST",
+            headers=csrf_hdrs,
+            body={"approval_token": dns_tok},
+        )
+        assert st == 409 and json.loads(dns_rep_raw)["code"] == "GASH-E409"
+
+        # Before UDP DNS propagates to 203.0.113.88, /api/https/plan MUST fail 422 GASH-E422 to guard Let's Encrypt rate limits
+        st, _, pre_prop_raw = http_request(
+            f"{gash_url}/api/https/plan",
+            method="POST",
+            headers=csrf_hdrs,
+            body={
+                "node_id": node_id,
+                "domain": "example.com",
+                "expected_ip": target_vps_ip,
+                "edge_proxy": "caddy",
+                "workspace": str(ws_dir),
+                "blueprint_id": "grab-grisp-app",
+                "app_name": "urban-edge",
+                "dns_snapshot_id": dns_snap_id,
+                "workers": "2",
+            },
+        )
+        assert st == 422 and json.loads(pre_prop_raw)["code"] == "GASH-E422", f"Expected 422 before propagation, got {st}: {pre_prop_raw}"
+
+        # Flip Mock UDP DNS responder to cutover VPS IP 203.0.113.88 and verify live check + Auto-HTTPS deploy via Grabtaculous
+        with dns_lock:
+            dns_ans_ref["ip"] = target_vps_ip
+        st, _, prop_chk_raw = http_request(
+            f"{gash_url}/api/dns/propagation/check",
+            method="POST",
+            headers=csrf_hdrs,
+            body={"node_id": node_id, "domain": "example.com", "expected_ip": target_vps_ip, "edge_proxy": "caddy"},
+        )
+        assert st == 200 and json.loads(prop_chk_raw)["propagation"]["propagated"] is True
+
+        st, _, hplan_raw = http_request(
+            f"{gash_url}/api/https/plan",
+            method="POST",
+            headers=csrf_hdrs,
+            body={
+                "node_id": node_id,
+                "domain": "example.com",
+                "expected_ip": target_vps_ip,
+                "edge_proxy": "caddy",
+                "workspace": str(ws_dir),
+                "blueprint_id": "grab-grisp-app",
+                "app_name": "urban-edge",
+                "dns_snapshot_id": dns_snap_id,
+                "workers": "2",
+            },
+        )
+        assert st == 200, f"HTTPS plan failed after propagation ({st}): {hplan_raw}"
+        h_tok = json.loads(hplan_raw)["approval_token"]
+
+        st, _, happly_raw = http_request(
+            f"{gash_url}/api/https/apply",
+            method="POST",
+            headers=csrf_hdrs,
+            body={"approval_token": h_tok},
+        )
+        assert st == 200, f"HTTPS apply failed ({st}): {happly_raw}"
+        happly_doc = json.loads(happly_raw)
+        rollout_id = happly_doc["rollout"]["id"]
+        https_rb_tok = happly_doc["rollback_approval_token"]
+        assert happly_doc["rollout"]["ready_status"] == "200"
+        deploy_info = happly_doc["deploy"]["deploy"]
+        worker_ports = deploy_info.get("worker_ports", [])
+        assert len(worker_ports) >= 1 and all(8765 <= p <= 8772 for p in worker_ports), f"Unexpected worker_ports: {worker_ports}"
+        caddy_file = ws_dir / "deploy" / "Caddyfile"
+        assert caddy_file.exists(), f"Expected Grabtaculous to write {caddy_file}"
+        caddy_txt = caddy_file.read_text(encoding="utf-8")
+        assert "example.com" in caddy_txt and f"127.0.0.1:{worker_ports[0]}" in caddy_txt and "health_uri /_ready" in caddy_txt, caddy_txt
+
+        # 1-Click Rollback restores Grabtaculous edge snapshot + Namecheap pre-cutover DNS records + rejects 409 replay
+        st, _, hrb_raw = http_request(
+            f"{gash_url}/api/https/rollback",
+            method="POST",
+            headers=csrf_hdrs,
+            body={"rollout_id": rollout_id, "approval_token": https_rb_tok, "rollback_dns": True, "dns_approval_token": dns_rb_tok},
+        )
+        assert st == 200, f"HTTPS+DNS 1-click rollback failed ({st}): {hrb_raw}"
+        hrb_doc = json.loads(hrb_raw)
+        assert hrb_doc["rollback"]["status"] == "rolled_back"
+        with nc_lock:
+            assert nc_state["set_calls"] == 2
+            assert any(h["name"] == "@" and h["type"] == "A" and h["address"] == "198.51.100.10" for h in nc_state["hosts"])
+            assert any(h["type"] == "MX" and h["address"] == "mail.protonmail.ch." for h in nc_state["hosts"])
+
+        st, _, hrb_rep_raw = http_request(
+            f"{gash_url}/api/https/rollback",
+            method="POST",
+            headers=csrf_hdrs,
+            body={"rollout_id": rollout_id, "approval_token": https_rb_tok},
+        )
+        assert st == 409 and json.loads(hrb_rep_raw)["code"] == "GASH-E409"
+
         # 5. Verify all 7 upstream/peer repositories remain strictly untouched
         upstream_repos = [
             Path(r"C:\Development\GRAB"),
@@ -1008,7 +1330,7 @@ def gate_4_live_6layer_e2e():
                 gs = run_cmd(["git", "status", "--short"], cwd=repo)
                 assert gs.stdout.strip() == "", f"Upstream/peer repo {repo} is dirty:\n{gs.stdout}"
 
-        print("  [PASS] Gate 4 live 6-layer cross-stack integration + v0.2.0 Theme & DB Manager verified (all 7 peer repos clean).")
+        print("  [PASS] Gate 4 live 6-layer cross-stack integration + v0.3.0 Namecheap DNS & Auto-HTTPS Wizard verified (all 7 peer repos clean).")
     except Exception:
         for lp in log_paths:
             if lp.exists():
@@ -1017,6 +1339,13 @@ def gate_4_live_6layer_e2e():
                     print(f"\n--- {lp.name} ---\n{tail}")
         raise
     finally:
+        if nc_srv is not None:
+            nc_srv.shutdown()
+            nc_srv.server_close()
+        if dns_stop is not None:
+            dns_stop.set()
+        if dns_thread is not None:
+            dns_thread.join(timeout=2)
         if echo_stop is not None:
             echo_stop.set()
         if echo_thread is not None:
@@ -1041,7 +1370,7 @@ def main():
     gate_2_unit_dom_wcag_and_contracts()
     gate_3_go_bridge_build_test_vuln()
     gate_4_live_6layer_e2e()
-    print("\nALL 4 GASHBOARD v0.2.0 VERIFICATION GATES PASSED 100%.")
+    print("\nALL 4 GASHBOARD v0.3.0 VERIFICATION GATES PASSED 100%.")
 
 
 if __name__ == "__main__":

@@ -11,12 +11,12 @@ use server
 use text
 
 # ==============================================================================
-# Gashboard v0.2.0 — Discreet 127.0.0.1 Multi-VPS Control Panel, Fleet Deployer
-# & Built-In phpMyAdmin-Style Visual Database Manager
+# Gashboard v0.3.0 — Discreet 127.0.0.1 Multi-VPS Control Panel, Fleet Deployer,
+# Built-In Visual Database Manager & Namecheap DNS + Auto-HTTPS Wizard
 # Built cleanly on GRAB v1.1.0, Grex JS v1.0.0, grabman v0.1.0 & grabtaculous.
 # ==============================================================================
 
-set gash_version to "0.2.0"
+set gash_version to "0.3.0"
 set gash_cache to cache.open using "gashboard"
 set db to data.open using "main"
 
@@ -50,6 +50,20 @@ set stmt_mark_db_snapshot to data.prepare using db, "UPDATE db_mutation_snapshot
 
 set stmt_insert_db_audit to data.prepare using db, "INSERT INTO db_audit_logs (id, target_id, operation_kind, sql_preview, row_count, snapshot_id, status, created_at) VALUES (:id, :target_id, :operation_kind, :sql_preview, :row_count, :snapshot_id, :status, :created_at)", record {params: record {id: "text", target_id: "text", operation_kind: "text", sql_preview: "text", row_count: "text", snapshot_id: "text", status: "text", created_at: "text"}, columns: record {}}
 set stmt_list_db_audits to data.prepare using db, "SELECT id, target_id, operation_kind, sql_preview, row_count, snapshot_id, status, created_at FROM db_audit_logs ORDER BY created_at DESC, id DESC", record {params: record {}, columns: record {id: "text", target_id: "text", operation_kind: "text", sql_preview: "text", row_count: "text", snapshot_id: "text", status: "text", created_at: "text"}}
+
+set stmt_get_dns_cred to data.prepare using db, "SELECT id, provider, api_user_enc, api_user_masked, api_key_enc, client_ip_enc, client_ip_masked, sandbox, updated_at FROM dns_provider_credentials WHERE provider = :provider", record {params: record {provider: "text"}, columns: record {id: "text", provider: "text", api_user_enc: "text", api_user_masked: "text", api_key_enc: "text", client_ip_enc: "text", client_ip_masked: "text", sandbox: "integer", updated_at: "text"}}
+set stmt_insert_dns_cred to data.prepare using db, "INSERT INTO dns_provider_credentials (id, provider, api_user_enc, api_user_masked, api_key_enc, client_ip_enc, client_ip_masked, sandbox, updated_at) VALUES (:id, :provider, :api_user_enc, :api_user_masked, :api_key_enc, :client_ip_enc, :client_ip_masked, :sandbox, :updated_at)", record {params: record {id: "text", provider: "text", api_user_enc: "text", api_user_masked: "text", api_key_enc: "text", client_ip_enc: "text", client_ip_masked: "text", sandbox: "integer", updated_at: "text"}, columns: record {}}
+set stmt_update_dns_cred to data.prepare using db, "UPDATE dns_provider_credentials SET api_user_enc = :api_user_enc, api_user_masked = :api_user_masked, api_key_enc = :api_key_enc, client_ip_enc = :client_ip_enc, client_ip_masked = :client_ip_masked, sandbox = :sandbox, updated_at = :updated_at WHERE provider = :provider", record {params: record {api_user_enc: "text", api_user_masked: "text", api_key_enc: "text", client_ip_enc: "text", client_ip_masked: "text", sandbox: "integer", updated_at: "text", provider: "text"}, columns: record {}}
+
+set stmt_list_dns_snapshots to data.prepare using db, "SELECT id, domain, node_id, edge_proxy, subdomain, target_ip, prior_hosts_json, applied_hosts_json, preserved_email_count, backup_sha256, status, created_at, rolled_back_at FROM dns_host_snapshots ORDER BY created_at DESC, id DESC", record {params: record {}, columns: record {id: "text", domain: "text", node_id: "text", edge_proxy: "text", subdomain: "text", target_ip: "text", prior_hosts_json: "text", applied_hosts_json: "text", preserved_email_count: "text", backup_sha256: "text", status: "text", created_at: "text", rolled_back_at: "text"}}
+set stmt_get_dns_snapshot to data.prepare using db, "SELECT id, domain, node_id, edge_proxy, subdomain, target_ip, prior_hosts_json, applied_hosts_json, preserved_email_count, backup_sha256, status, created_at, rolled_back_at FROM dns_host_snapshots WHERE id = :id", record {params: record {id: "text"}, columns: record {id: "text", domain: "text", node_id: "text", edge_proxy: "text", subdomain: "text", target_ip: "text", prior_hosts_json: "text", applied_hosts_json: "text", preserved_email_count: "text", backup_sha256: "text", status: "text", created_at: "text", rolled_back_at: "text"}}
+set stmt_insert_dns_snapshot to data.prepare using db, "INSERT INTO dns_host_snapshots (id, domain, node_id, edge_proxy, subdomain, target_ip, prior_hosts_json, applied_hosts_json, preserved_email_count, backup_sha256, status, created_at, rolled_back_at) VALUES (:id, :domain, :node_id, :edge_proxy, :subdomain, :target_ip, :prior_hosts_json, :applied_hosts_json, :preserved_email_count, :backup_sha256, :status, :created_at, :rolled_back_at)", record {params: record {id: "text", domain: "text", node_id: "text", edge_proxy: "text", subdomain: "text", target_ip: "text", prior_hosts_json: "text", applied_hosts_json: "text", preserved_email_count: "text", backup_sha256: "text", status: "text", created_at: "text", rolled_back_at: "text"}, columns: record {}}
+set stmt_mark_dns_snapshot to data.prepare using db, "UPDATE dns_host_snapshots SET status = :status, rolled_back_at = :rolled_back_at WHERE id = :id", record {params: record {status: "text", rolled_back_at: "text", id: "text"}, columns: record {}}
+
+set stmt_list_https_rollouts to data.prepare using db, "SELECT id, node_id, domain, edge_proxy, workspace, dns_snapshot_id, grabtac_deploy_id, pre_deploy_snapshot_id, ready_status, tls_verified, status, created_at, rolled_back_at FROM https_edge_rollouts ORDER BY created_at DESC, id DESC", record {params: record {}, columns: record {id: "text", node_id: "text", domain: "text", edge_proxy: "text", workspace: "text", dns_snapshot_id: "text", grabtac_deploy_id: "text", pre_deploy_snapshot_id: "text", ready_status: "text", tls_verified: "integer", status: "text", created_at: "text", rolled_back_at: "text"}}
+set stmt_get_https_rollout to data.prepare using db, "SELECT id, node_id, domain, edge_proxy, workspace, dns_snapshot_id, grabtac_deploy_id, pre_deploy_snapshot_id, ready_status, tls_verified, status, created_at, rolled_back_at FROM https_edge_rollouts WHERE id = :id", record {params: record {id: "text"}, columns: record {id: "text", node_id: "text", domain: "text", edge_proxy: "text", workspace: "text", dns_snapshot_id: "text", grabtac_deploy_id: "text", pre_deploy_snapshot_id: "text", ready_status: "text", tls_verified: "integer", status: "text", created_at: "text", rolled_back_at: "text"}}
+set stmt_insert_https_rollout to data.prepare using db, "INSERT INTO https_edge_rollouts (id, node_id, domain, edge_proxy, workspace, dns_snapshot_id, grabtac_deploy_id, pre_deploy_snapshot_id, ready_status, tls_verified, status, created_at, rolled_back_at) VALUES (:id, :node_id, :domain, :edge_proxy, :workspace, :dns_snapshot_id, :grabtac_deploy_id, :pre_deploy_snapshot_id, :ready_status, :tls_verified, :status, :created_at, :rolled_back_at)", record {params: record {id: "text", node_id: "text", domain: "text", edge_proxy: "text", workspace: "text", dns_snapshot_id: "text", grabtac_deploy_id: "text", pre_deploy_snapshot_id: "text", ready_status: "text", tls_verified: "integer", status: "text", created_at: "text", rolled_back_at: "text"}, columns: record {}}
+set stmt_mark_https_rollout to data.prepare using db, "UPDATE https_edge_rollouts SET status = :status, rolled_back_at = :rolled_back_at WHERE id = :id", record {params: record {status: "text", rolled_back_at: "text", id: "text"}, columns: record {}}
 
 # ==============================================================================
 # Helpers: Cache, Env, Security, ADR-025c Validation, Host-Key Pinning & Bridge
@@ -155,6 +169,11 @@ end
 make encrypt_vault_secret using plaintext
   set k to derive_vault_key using "aes256gcm"
   give back crypto.encrypt_aead using plaintext, k
+end
+
+make decrypt_vault_secret using ciphertext
+  set k to derive_vault_key using "aes256gcm"
+  give back crypto.decrypt_aead using ciphertext, k
 end
 
 make get_or_create_csrf using c
@@ -335,7 +354,7 @@ make list_blueprints using v_tag
 end
 
 make find_blueprint using bp_id
-  set all_bps to list_blueprints using "0.2.0"
+  set all_bps to list_blueprints using "0.3.0"
   for each bp in all_bps
     if bp.id is bp_id
       give back bp
@@ -550,6 +569,158 @@ make bridge_error_status using bridge_res, fallback_status
     give back bridge_res.status
   end
   give back fallback_status
+end
+
+make mask_short_secret using raw_s
+  set s to text.trim using raw_s
+  set n to text.length using s
+  if n is 0
+    give back ""
+  end
+  if n is less than 3
+    give back "***"
+  end
+  set chars to text.split using s, ""
+  if n is less than 5
+    give back (chars at 0) joined with "***"
+  end
+  set prefix to (chars at 0) joined with (chars at 1)
+  set suffix to (chars at (n minus 2)) joined with (chars at (n minus 1))
+  give back prefix joined with "***" joined with suffix
+end
+
+make mask_ip_address using raw_ip
+  set s to text.trim using raw_ip
+  if s is ""
+    give back ""
+  end
+  if text.contains using s, "."
+    set octs to text.split using s, "."
+    if (collections.length using octs) is 4
+      give back (octs at 0) joined with "." joined with (octs at 1) joined with ".***." joined with (octs at 3)
+    end
+  end
+  give back mask_short_secret using s
+end
+
+make is_valid_ipv4 using raw_ip
+  set s to text.trim using raw_ip
+  if (s is "") or (text.contains using s, " ")
+    give back no
+  end
+  set parts to text.split using s, "."
+  if (collections.length using parts) is not 4
+    give back no
+  end
+  set digits to "0123456789"
+  for each p in parts
+    set plen to text.length using p
+    if (plen is 0) or (plen is greater than 3)
+      give back no
+    end
+    for each ch in (text.split using p, "")
+      if not (text.contains using digits, ch)
+        give back no
+      end
+    end
+    try
+      set num to text.to_integer using p
+      if (num is less than 0) or (num is greater than 255)
+        give back no
+      end
+    catch err
+      give back no
+    end
+  end
+  give back yes
+end
+
+make is_valid_ttl_wire using raw_val
+  if not (is_strict_decimal_wire using raw_val)
+    give back no
+  end
+  set s to text.trim using (text.from using raw_val)
+  if text.contains using s, "."
+    give back no
+  end
+  try
+    set n to text.to_integer using s
+    give back (not (n is less than 60)) and (not (n is greater than 86400))
+  catch err
+    give back no
+  end
+end
+
+make map_get_bool using m, k, fallback
+  if m is nothing
+    give back fallback
+  end
+  if not (has_map_key using m, k)
+    give back fallback
+  end
+  set v to m at k
+  if v is nothing
+    give back fallback
+  end
+  if v is yes or v is no
+    give back v
+  end
+  set low to text.lower using (text.trim using (text.from using v))
+  if low is "true" or low is "1" or low is "yes"
+    give back yes
+  end
+  if low is "false" or low is "0" or low is "no"
+    give back no
+  end
+  give back fallback
+end
+
+make load_decrypted_namecheap_creds using s_get_cred
+  set row to data.one using s_get_cred, record {provider: "namecheap"}
+  if row is nothing
+    give back record {ok: no, status: 422, code: "GASH-E422", error: "Namecheap API credentials are not configured yet. Save them in the encrypted vault first.", creds: {}}
+  end
+  try
+    set dec_user to decrypt_vault_secret using row.api_user_enc
+    set dec_key to decrypt_vault_secret using row.api_key_enc
+    set dec_ip to decrypt_vault_secret using row.client_ip_enc
+    set is_sb to (row.sandbox is 1)
+    give back record {ok: yes, status: 200, code: "", error: "", creds: {"api_user": dec_user, "api_key": dec_key, "client_ip": dec_ip, "sandbox": is_sb}}
+  catch err
+    give back record {ok: no, status: 500, code: "GASH-E500", error: "Failed to decrypt Namecheap vault credentials with configured GASHBOARD_MASTER_KEY.", creds: {}}
+  end
+end
+
+make enrich_dns_snapshots_for_ui using c, raw_rows
+  set out to []
+  for each row in raw_rows
+    set item to copy_to_map using row
+    set cached_tok to cache_get_opt using c, ("dnssnap_rb:" joined with row.id)
+    if cached_tok is not nothing
+      set apprv to cache_get_opt using c, ("apprv:" joined with cached_tok)
+      if apprv is not nothing and (not apprv.used)
+        set item to collections.put using item, "rollback_token", cached_tok
+      end
+    end
+    set out to collections.append using out, item
+  end
+  give back out
+end
+
+make enrich_https_rollouts_for_ui using c, raw_rows
+  set out to []
+  for each row in raw_rows
+    set item to copy_to_map using row
+    set cached_tok to cache_get_opt using c, ("https_rb:" joined with row.id)
+    if cached_tok is not nothing
+      set apprv to cache_get_opt using c, ("apprv:" joined with cached_tok)
+      if apprv is not nothing and (not apprv.used)
+        set item to collections.put using item, "rollback_token", cached_tok
+      end
+    end
+    set out to collections.append using out, item
+  end
+  give back out
 end
 
 make seed_default_vps_nodes using s_count, s_insert
@@ -1397,6 +1568,549 @@ route "POST" "/api/db/snapshots/restore" using req
     set audits_out to data.query using stmt_list_db_audits, record {}
 
     give back server.json using 200, record {ok: yes, restore: br.data, snapshots: snaps_out, audits: audits_out}
+  catch err
+    give back server.json using 400, record {ok: no, error: err.message}
+  end
+end
+
+# ==============================================================================
+# v0.3.0: Encrypted Namecheap Credential Vault, Email-Safe DNS Provisioner,
+# Propagation Preflight & Grabtaculous Auto-HTTPS + 1-Click Rollback Routes
+# ==============================================================================
+
+route "GET" "/api/dns/namecheap/status"
+  set row to data.one using stmt_get_dns_cred, record {provider: "namecheap"}
+  if row is nothing
+    give back server.json using 200, record {ok: yes, configured: no, provider: "namecheap", api_user_masked: "", client_ip_masked: "", client_ip: "", sandbox: yes, vault_cipher: "AES-256-GCM", api_key_configured: no, updated_at: ""}
+  end
+  set is_sb to (row.sandbox is 1)
+  give back server.json using 200, record {ok: yes, configured: yes, provider: "namecheap", api_user_masked: row.api_user_masked, client_ip_masked: row.client_ip_masked, client_ip: row.client_ip_masked, sandbox: is_sb, vault_cipher: "AES-256-GCM", api_key_configured: yes, updated_at: row.updated_at}
+end
+
+route "POST" "/api/dns/namecheap/save" using req
+  if not (verify_csrf using gash_cache, req)
+    give back server.json using 403, record {ok: no, code: "GASH-E403", error: "Invalid or missing X-CSRF-Token"}
+  end
+  try
+    set payload to server.parse_json using req
+    set api_user to text.trim using (map_get_str using payload, "api_user", "")
+    set api_key to text.trim using (map_get_str using payload, "api_key", "")
+    set client_ip to text.trim using (map_get_str using payload, "client_ip", "")
+    set is_sb to map_get_bool using payload, "sandbox", yes
+
+    if (api_user is "") or (api_key is "") or (client_ip is "")
+      give back server.json using 422, record {ok: no, code: "GASH-E422", error: "Namecheap api_user, api_key, and whitelisted client_ip are required."}
+    end
+    if not (is_valid_ipv4 using client_ip)
+      give back server.json using 422, record {ok: no, code: "GASH-E422", error: "client_ip must be a valid IPv4 address registered in your Namecheap API whitelist."}
+    end
+
+    set enc_user to encrypt_vault_secret using api_user
+    set enc_key to encrypt_vault_secret using api_key
+    set enc_ip to encrypt_vault_secret using client_ip
+    set user_mask to mask_short_secret using api_user
+    set ip_mask to mask_ip_address using client_ip
+    set sb_int to 0
+    if is_sb
+      set sb_int to 1
+    end
+    set now_r to call dates.now_utc
+
+    set existing to data.one using stmt_get_dns_cred, record {provider: "namecheap"}
+    if existing is not nothing
+      call data.execute using stmt_update_dns_cred, record {api_user_enc: enc_user, api_user_masked: user_mask, api_key_enc: enc_key, client_ip_enc: enc_ip, client_ip_masked: ip_mask, sandbox: sb_int, updated_at: now_r.iso, provider: "namecheap"}
+    otherwise
+      call data.execute using stmt_insert_dns_cred, record {id: "cred_namecheap", provider: "namecheap", api_user_enc: enc_user, api_user_masked: user_mask, api_key_enc: enc_key, client_ip_enc: enc_ip, client_ip_masked: ip_mask, sandbox: sb_int, updated_at: now_r.iso}
+    end
+
+    give back server.json using 200, record {ok: yes, configured: yes, provider: "namecheap", api_user_masked: user_mask, client_ip_masked: ip_mask, client_ip: ip_mask, sandbox: is_sb, vault_cipher: "AES-256-GCM", api_key_configured: yes, updated_at: now_r.iso}
+  catch err
+    give back server.json using 400, record {ok: no, error: err.message}
+  end
+end
+
+route "POST" "/api/dns/plan" using req
+  if not (verify_csrf using gash_cache, req)
+    give back server.json using 403, record {ok: no, code: "GASH-E403", error: "Invalid or missing X-CSRF-Token"}
+  end
+  try
+    set payload to server.parse_json using req
+    set node_id to text.trim using (map_get_str using payload, "node_id", "vps-prod-01")
+    set domain to text.trim using (map_get_str using payload, "domain", "")
+    set root_domain to text.trim using (map_get_str using payload, "root_domain", "")
+    set subdomain to text.trim using (map_get_str using payload, "subdomain", "")
+    set target_ip to text.trim using (map_get_str using payload, "target_ip", "")
+    set target_ipv6 to text.trim using (map_get_str using payload, "target_ipv6", "")
+    set edge_proxy to text.lower using (text.trim using (map_get_str using payload, "edge_proxy", "caddy"))
+    set rec_mode to text.lower using (text.trim using (map_get_str using payload, "record_mode", "a"))
+    set cname_target to text.trim using (map_get_str using payload, "cname_target", "")
+    set configure_www to map_get_bool using payload, "configure_www", yes
+
+    if has_map_key using payload, "ttl"
+      set raw_ttl to payload at "ttl"
+      if not (is_valid_ttl_wire using raw_ttl)
+        give back server.json using 422, record {ok: no, code: "GASH-E422", error: "ADR-025c violation: field \"ttl\" must be an exact base-10 integer string between 60 and 86400."}
+      end
+      set ttl_str to text.trim using (text.from using raw_ttl)
+    otherwise
+      set ttl_str to "300"
+    end
+
+    if node_id is not ""
+      set node_row to data.one using stmt_get_node, record {id: node_id}
+      if node_row is nothing
+        give back server.json using 404, record {ok: no, error: ("VPS node not found: " joined with node_id)}
+      end
+      if target_ip is ""
+        set target_ip to node_row.host
+      end
+      if domain is ""
+        set domain to node_row.domain
+      end
+    end
+
+    if (domain is "") and (root_domain is "")
+      give back server.json using 422, record {ok: no, code: "GASH-E422", error: "domain (or root_domain) is required"}
+    end
+    if not (is_safe_edge_proxy using edge_proxy)
+      give back server.json using 422, record {ok: no, code: "GASH-E422", error: "edge_proxy must be caddy, nginx, or cloudflare-tunnel"}
+    end
+    if (rec_mode is not "cname") and (not (is_valid_ipv4 using target_ip))
+      give back server.json using 422, record {ok: no, code: "GASH-E422", error: "target_ip must be a valid IPv4 address for the destination VPS"}
+    end
+
+    set creds_res to load_decrypted_namecheap_creds using stmt_get_dns_cred
+    if not creds_res.ok
+      give back server.json using creds_res.status, record {ok: no, code: creds_res.code, error: creds_res.error}
+    end
+
+    set br to bridge_post using "/v1/dns/namecheap/plan", {"credentials": creds_res.creds, "domain": domain, "root_domain": root_domain, "subdomain": subdomain, "target_ip": target_ip, "target_ipv6": target_ipv6, "ttl": ttl_str, "edge_proxy": edge_proxy, "record_mode": rec_mode, "cname_target": cname_target, "configure_www": configure_www}
+    if not br.configured
+      give back server.json using 503, record {ok: no, code: "GASH-E503", error: "gashboard-bridge is not configured for Namecheap DNS operations"}
+    end
+    if not br.ok
+      set st_code to bridge_error_status using br, 422
+      give back server.json using st_code, record {ok: no, code: br.code, error: br.error}
+    end
+
+    set plan_id to "dnsplan_" joined with (crypto.random_hex using 16)
+    set p_dom to map_get_str using br.data, "domain", domain
+    set p_root to map_get_str using br.data, "root_domain", root_domain
+    set p_sub to map_get_str using br.data, "subdomain", subdomain
+    set p_sha to map_get_str using br.data, "backup_sha256", ""
+    set plan_rec to record {plan_id: plan_id, node_id: node_id, domain: p_dom, root_domain: p_root, subdomain: p_sub, target_ip: target_ip, target_ipv6: target_ipv6, ttl: ttl_str, edge_proxy: edge_proxy, record_mode: rec_mode, cname_target: cname_target, configure_www: configure_www, backup_sha256: p_sha}
+    set tok to mint_approval using gash_cache, "dns_apply", plan_rec
+
+    give back server.json using 200, record {ok: yes, plan_id: plan_id, plan: br.data, approval_token: tok}
+  catch err
+    give back server.json using 400, record {ok: no, error: err.message}
+  end
+end
+
+route "POST" "/api/dns/apply" using req
+  if not (verify_csrf using gash_cache, req)
+    give back server.json using 403, record {ok: no, code: "GASH-E403", error: "Invalid or missing X-CSRF-Token"}
+  end
+  try
+    set payload to server.parse_json using req
+    set tok to map_get_str using payload, "approval_token", ""
+    set chk to consume_approval using gash_cache, tok, "dns_apply"
+    if not chk.ok
+      give back server.json using chk.status, record {ok: no, code: chk.code, error: chk.error}
+    end
+    set p_rec to chk.payload
+
+    set creds_res to load_decrypted_namecheap_creds using stmt_get_dns_cred
+    if not creds_res.ok
+      give back server.json using creds_res.status, record {ok: no, code: creds_res.code, error: creds_res.error}
+    end
+
+    set br to bridge_post using "/v1/dns/namecheap/apply", {"credentials": creds_res.creds, "domain": p_rec.domain, "root_domain": p_rec.root_domain, "subdomain": p_rec.subdomain, "target_ip": p_rec.target_ip, "target_ipv6": p_rec.target_ipv6, "ttl": p_rec.ttl, "edge_proxy": p_rec.edge_proxy, "record_mode": p_rec.record_mode, "cname_target": p_rec.cname_target, "configure_www": p_rec.configure_www}
+    if not br.configured
+      give back server.json using 503, record {ok: no, code: "GASH-E503", error: "gashboard-bridge is not configured for Namecheap DNS operations"}
+    end
+    if not br.ok
+      set st_code to bridge_error_status using br, 502
+      give back server.json using st_code, record {ok: no, code: br.code, error: br.error}
+    end
+
+    set snap_id to "dnssnap_" joined with (crypto.random_hex using 16)
+    set now_r to call dates.now_utc
+    set prior_json to "[]"
+    set merged_json to "[]"
+    if has_map_key using br.data, "existing_hosts"
+      set prior_json to json.stringify using (br.data at "existing_hosts")
+    end
+    if has_map_key using br.data, "merged_hosts"
+      set merged_json to json.stringify using (br.data at "merged_hosts")
+    end
+    set email_cnt to map_get_str using br.data, "preserved_email_count", "0"
+    set b_sha to map_get_str using br.data, "backup_sha256", p_rec.backup_sha256
+
+    call data.execute using stmt_insert_dns_snapshot, record {id: snap_id, domain: p_rec.domain, node_id: p_rec.node_id, edge_proxy: p_rec.edge_proxy, subdomain: p_rec.subdomain, target_ip: p_rec.target_ip, prior_hosts_json: prior_json, applied_hosts_json: merged_json, preserved_email_count: email_cnt, backup_sha256: b_sha, status: "applied", created_at: now_r.iso, rolled_back_at: ""}
+
+    set rb_tok to mint_approval using gash_cache, "dns_rollback", record {snapshot_id: snap_id, domain: p_rec.domain, root_domain: p_rec.root_domain, subdomain: p_rec.subdomain}
+    call cache.set using gash_cache, ("dnssnap_rb:" joined with snap_id), rb_tok, 3600000
+
+    set saved_snap to data.one using stmt_get_dns_snapshot, record {id: snap_id}
+    set raw_snaps to data.query using stmt_list_dns_snapshots, record {}
+    set snaps_out to enrich_dns_snapshots_for_ui using gash_cache, raw_snaps
+
+    give back server.json using 200, record {ok: yes, dns_snapshot_id: snap_id, snapshot: saved_snap, result: br.data, rollback_approval_token: rb_tok, snapshots: snaps_out}
+  catch err
+    give back server.json using 400, record {ok: no, error: err.message}
+  end
+end
+
+route "GET" "/api/dns/snapshots"
+  set raw_snaps to data.query using stmt_list_dns_snapshots, record {}
+  set snaps_out to enrich_dns_snapshots_for_ui using gash_cache, raw_snaps
+  set raw_rollouts to data.query using stmt_list_https_rollouts, record {}
+  set rollouts_out to enrich_https_rollouts_for_ui using gash_cache, raw_rollouts
+  give back server.json using 200, record {ok: yes, snapshots: snaps_out, rollouts: rollouts_out}
+end
+
+route "POST" "/api/dns/rollback" using req
+  if not (verify_csrf using gash_cache, req)
+    give back server.json using 403, record {ok: no, code: "GASH-E403", error: "Invalid or missing X-CSRF-Token"}
+  end
+  try
+    set payload to server.parse_json using req
+    set snap_id to text.trim using (map_get_str using payload, "dns_snapshot_id", "")
+    if snap_id is ""
+      set snap_id to text.trim using (map_get_str using payload, "snapshot_id", "")
+    end
+    set tok to map_get_str using payload, "approval_token", ""
+    if snap_id is ""
+      give back server.json using 400, record {ok: no, error: "dns_snapshot_id is required"}
+    end
+
+    set snap_row to data.one using stmt_get_dns_snapshot, record {id: snap_id}
+    if snap_row is nothing
+      give back server.json using 404, record {ok: no, error: ("DNS snapshot not found: " joined with snap_id)}
+    end
+
+    set chk to consume_approval using gash_cache, tok, "dns_rollback"
+    if not chk.ok
+      give back server.json using chk.status, record {ok: no, code: chk.code, error: chk.error}
+    end
+    set ap to chk.payload
+    if ap.snapshot_id is not snap_id
+      give back server.json using 403, record {ok: no, code: "GASH-E403", error: "approval_token snapshot_id mismatch"}
+    end
+
+    set creds_res to load_decrypted_namecheap_creds using stmt_get_dns_cred
+    if not creds_res.ok
+      give back server.json using creds_res.status, record {ok: no, code: creds_res.code, error: creds_res.error}
+    end
+
+    set prior_list to json.parse using snap_row.prior_hosts_json
+    set br to bridge_post using "/v1/dns/namecheap/restore", {"credentials": creds_res.creds, "domain": snap_row.domain, "root_domain": ap.root_domain, "subdomain": snap_row.subdomain, "email_type": "", "previous_hosts": prior_list}
+    if not br.configured
+      give back server.json using 503, record {ok: no, code: "GASH-E503", error: "gashboard-bridge is not configured for DNS rollback"}
+    end
+    if not br.ok
+      set st_code to bridge_error_status using br, 502
+      give back server.json using st_code, record {ok: no, code: br.code, error: br.error}
+    end
+
+    set now_r to call dates.now_utc
+    call data.execute using stmt_mark_dns_snapshot, record {status: "rolled_back", rolled_back_at: now_r.iso, id: snap_id}
+
+    set raw_snaps to data.query using stmt_list_dns_snapshots, record {}
+    set snaps_out to enrich_dns_snapshots_for_ui using gash_cache, raw_snaps
+
+    give back server.json using 200, record {ok: yes, rollback: record {dns_snapshot_id: snap_id, domain: snap_row.domain, status: "rolled_back", backup_sha256: snap_row.backup_sha256}, result: br.data, snapshots: snaps_out}
+  catch err
+    give back server.json using 400, record {ok: no, error: err.message}
+  end
+end
+
+route "POST" "/api/dns/propagation/check" using req
+  if not (verify_csrf using gash_cache, req)
+    give back server.json using 403, record {ok: no, code: "GASH-E403", error: "Invalid or missing X-CSRF-Token"}
+  end
+  try
+    set payload to server.parse_json using req
+    set node_id to text.trim using (map_get_str using payload, "node_id", "")
+    set domain to text.trim using (map_get_str using payload, "domain", "")
+    set expected_ip to text.trim using (map_get_str using payload, "expected_ip", "")
+    set expected_ipv6 to text.trim using (map_get_str using payload, "expected_ipv6", "")
+    set edge_proxy to text.lower using (text.trim using (map_get_str using payload, "edge_proxy", "caddy"))
+
+    if node_id is not ""
+      set node_row to data.one using stmt_get_node, record {id: node_id}
+      if node_row is not nothing
+        if expected_ip is ""
+          set expected_ip to node_row.host
+        end
+        if domain is ""
+          set domain to node_row.domain
+        end
+      end
+    end
+
+    if domain is ""
+      give back server.json using 422, record {ok: no, code: "GASH-E422", error: "domain is required for propagation check"}
+    end
+
+    set br to bridge_post using "/v1/dns/propagation/check", {"domain": domain, "expected_ip": expected_ip, "expected_ipv6": expected_ipv6, "edge_proxy": edge_proxy, "fail_on_unpropagated": no}
+    if not br.configured
+      give back server.json using 503, record {ok: no, code: "GASH-E503", error: "gashboard-bridge is not configured for DNS propagation checks"}
+    end
+    if not br.ok
+      set st_code to bridge_error_status using br, 422
+      give back server.json using st_code, record {ok: no, code: br.code, error: br.error}
+    end
+
+    give back server.json using 200, record {ok: yes, propagation: br.data}
+  catch err
+    give back server.json using 400, record {ok: no, error: err.message}
+  end
+end
+
+route "POST" "/api/https/plan" using req
+  if not (verify_csrf using gash_cache, req)
+    give back server.json using 403, record {ok: no, code: "GASH-E403", error: "Invalid or missing X-CSRF-Token"}
+  end
+  try
+    set payload to server.parse_json using req
+    set node_id to text.trim using (map_get_str using payload, "node_id", "vps-prod-01")
+    set domain to text.trim using (map_get_str using payload, "domain", "")
+    set expected_ip to text.trim using (map_get_str using payload, "expected_ip", "")
+    set expected_ipv6 to text.trim using (map_get_str using payload, "expected_ipv6", "")
+    set edge_proxy to text.lower using (text.trim using (map_get_str using payload, "edge_proxy", "caddy"))
+    set workspace to text.trim using (map_get_str using payload, "workspace", "")
+    set blueprint_id to text.trim using (map_get_str using payload, "blueprint_id", "grab-grisp-app")
+    set app_name to text.trim using (map_get_str using payload, "app_name", "gashboard-edge")
+    set dns_snapshot_id to text.trim using (map_get_str using payload, "dns_snapshot_id", "")
+
+    if has_map_key using payload, "workers"
+      set raw_w to payload at "workers"
+      if not (is_strict_decimal_wire using raw_w)
+        give back server.json using 422, record {ok: no, code: "GASH-E422", error: "ADR-025c violation: field \"workers\" must be an exact base-10 string."}
+      end
+      set workers_str to text.trim using (text.from using raw_w)
+    otherwise
+      set workers_str to "2"
+    end
+
+    set node_row to data.one using stmt_get_node, record {id: node_id}
+    if node_row is nothing
+      give back server.json using 404, record {ok: no, error: ("VPS node not found: " joined with node_id)}
+    end
+    if expected_ip is ""
+      set expected_ip to node_row.host
+    end
+    if domain is ""
+      set domain to node_row.domain
+    end
+    if not (is_safe_edge_proxy using edge_proxy)
+      give back server.json using 422, record {ok: no, code: "GASH-E422", error: "edge_proxy must be caddy, nginx, or cloudflare-tunnel"}
+    end
+
+    set prop_br to bridge_post using "/v1/dns/propagation/check", {"domain": domain, "expected_ip": expected_ip, "expected_ipv6": expected_ipv6, "edge_proxy": edge_proxy, "fail_on_unpropagated": yes}
+    if not prop_br.configured
+      give back server.json using 503, record {ok: no, code: "GASH-E503", error: "gashboard-bridge is not configured for DNS propagation preflight"}
+    end
+    if not prop_br.ok
+      set st_code to bridge_error_status using prop_br, 422
+      give back server.json using st_code, record {ok: no, code: "GASH-E422", error: prop_br.error}
+    end
+
+    set hplan_id to "hplan_" joined with (crypto.random_hex using 16)
+    set plan_rec to record {plan_id: hplan_id, node_id: node_id, domain: domain, expected_ip: expected_ip, expected_ipv6: expected_ipv6, edge_proxy: edge_proxy, workspace: workspace, blueprint_id: blueprint_id, app_name: app_name, workers: workers_str, dns_snapshot_id: dns_snapshot_id}
+    set tok to mint_approval using gash_cache, "https_apply", plan_rec
+
+    give back server.json using 200, record {ok: yes, ready_for_tls: yes, propagation: prop_br.data, plan: plan_rec, approval_token: tok}
+  catch err
+    give back server.json using 400, record {ok: no, error: err.message}
+  end
+end
+
+route "POST" "/api/https/apply" using req
+  if not (verify_csrf using gash_cache, req)
+    give back server.json using 403, record {ok: no, code: "GASH-E403", error: "Invalid or missing X-CSRF-Token"}
+  end
+  try
+    set payload to server.parse_json using req
+    set tok to map_get_str using payload, "approval_token", ""
+    set chk to consume_approval using gash_cache, tok, "https_apply"
+    if not chk.ok
+      give back server.json using chk.status, record {ok: no, code: chk.code, error: chk.error}
+    end
+    set p_rec to chk.payload
+
+    set prop_br to bridge_post using "/v1/dns/propagation/check", {"domain": p_rec.domain, "expected_ip": p_rec.expected_ip, "expected_ipv6": p_rec.expected_ipv6, "edge_proxy": p_rec.edge_proxy, "fail_on_unpropagated": yes}
+    if not prop_br.configured
+      give back server.json using 503, record {ok: no, code: "GASH-E503", error: "gashboard-bridge is not configured for DNS propagation preflight"}
+    end
+    if not prop_br.ok
+      set st_code to bridge_error_status using prop_br, 422
+      give back server.json using st_code, record {ok: no, code: "GASH-E422", error: prop_br.error}
+    end
+
+    set node_row to data.one using stmt_get_node, record {id: p_rec.node_id}
+    if node_row is nothing
+      give back server.json using 404, record {ok: no, error: ("VPS node not found: " joined with p_rec.node_id)}
+    end
+
+    set grabtac_url to text.trim using (map_get_str using payload, "grabtaculous_url", (resolve_env_opt using "GASHBOARD_GRABTACULOUS_URL"))
+    set grabtac_tok to text.trim using (map_get_str using payload, "grabtaculous_token", (resolve_env_opt using "GASHBOARD_GRABTACULOUS_TOKEN"))
+    set upstream_ready to text.trim using (map_get_str using payload, "upstream_ready_url", (resolve_env_opt using "GASHBOARD_UPSTREAM_READY_URL"))
+    set https_probe_url to text.trim using (map_get_str using payload, "https_probe_url", (resolve_env_opt using "GASHBOARD_HTTPS_PROBE_URL"))
+
+    set deploy_snap_id to ""
+    set pre_snap_id to ""
+    set deploy_data to {}
+    set ws_dir to text.trim using p_rec.workspace
+
+    if (grabtac_url is not "") and (ws_dir is not "")
+      set p_int to text.to_integer using node_row.ssh_port
+      set w_int to text.to_integer using p_rec.workers
+      set dep_payload to {"blueprint_id": p_rec.blueprint_id, "workspace": ws_dir, "app_name": p_rec.app_name, "domain": p_rec.domain, "edge_proxy": p_rec.edge_proxy, "workers": w_int, "skip_lock_verify": yes}
+      set gt_res to bridge_post using "/v1/grabtaculous/proxy", {"ssh_host": node_row.host, "ssh_port": p_int, "host_key_fingerprint": node_row.host_key_fingerprint, "target_url": grabtac_url, "bearer_token": grabtac_tok, "method": "POST", "api_path": "/v1/deploy", "payload": dep_payload}
+      if not gt_res.configured
+        give back server.json using 503, record {ok: no, code: "GASH-E503", error: "gashboard-bridge is not configured"}
+      end
+      if not gt_res.ok
+        set st_code to bridge_error_status using gt_res, 502
+        give back server.json using st_code, record {ok: no, code: gt_res.code, error: gt_res.error}
+      end
+      set deploy_data to gt_res.data
+      if has_map_key using deploy_data, "deploy"
+        set dep_obj to deploy_data at "deploy"
+        set deploy_snap_id to map_get_str using dep_obj, "deploy_snapshot_id", ""
+        set pre_snap_id to map_get_str using dep_obj, "pre_deploy_snapshot", ""
+      end
+    end
+
+    set ver_br to bridge_post using "/v1/https/verify", {"domain": p_rec.domain, "edge_proxy": p_rec.edge_proxy, "upstream_ready_url": upstream_ready, "https_probe_url": https_probe_url}
+    if not ver_br.configured
+      give back server.json using 503, record {ok: no, code: "GASH-E503", error: "gashboard-bridge is not configured for HTTPS verification"}
+    end
+    if not ver_br.ok
+      set st_code to bridge_error_status using ver_br, 502
+      give back server.json using st_code, record {ok: no, code: ver_br.code, error: ver_br.error}
+    end
+
+    set tls_ver_int to 0
+    if has_map_key using ver_br.data, "tls_verified"
+      if (ver_br.data at "tls_verified") is yes
+        set tls_ver_int to 1
+      end
+    end
+    set ready_st to map_get_str using ver_br.data, "ready_status", "200"
+
+    set rollout_id to "https_" joined with (crypto.random_hex using 16)
+    set now_r to call dates.now_utc
+    call data.execute using stmt_insert_https_rollout, record {id: rollout_id, node_id: p_rec.node_id, domain: p_rec.domain, edge_proxy: p_rec.edge_proxy, workspace: ws_dir, dns_snapshot_id: p_rec.dns_snapshot_id, grabtac_deploy_id: deploy_snap_id, pre_deploy_snapshot_id: pre_snap_id, ready_status: ready_st, tls_verified: tls_ver_int, status: "active", created_at: now_r.iso, rolled_back_at: ""}
+
+    set rb_tok to mint_approval using gash_cache, "https_rollback", record {rollout_id: rollout_id, node_id: p_rec.node_id, workspace: ws_dir, grabtac_deploy_id: deploy_snap_id, pre_deploy_snapshot_id: pre_snap_id, dns_snapshot_id: p_rec.dns_snapshot_id}
+    call cache.set using gash_cache, ("https_rb:" joined with rollout_id), rb_tok, 3600000
+
+    set saved_r to data.one using stmt_get_https_rollout, record {id: rollout_id}
+    set raw_rollouts to data.query using stmt_list_https_rollouts, record {}
+    set rollouts_out to enrich_https_rollouts_for_ui using gash_cache, raw_rollouts
+
+    give back server.json using 200, record {ok: yes, rollout: saved_r, deploy: deploy_data, verify: ver_br.data, rollback_approval_token: rb_tok, rollouts: rollouts_out}
+  catch err
+    give back server.json using 400, record {ok: no, error: err.message}
+  end
+end
+
+route "POST" "/api/https/rollback" using req
+  if not (verify_csrf using gash_cache, req)
+    give back server.json using 403, record {ok: no, code: "GASH-E403", error: "Invalid or missing X-CSRF-Token"}
+  end
+  try
+    set payload to server.parse_json using req
+    set rollout_id to text.trim using (map_get_str using payload, "rollout_id", "")
+    set tok to map_get_str using payload, "approval_token", ""
+    set rollback_dns to map_get_bool using payload, "rollback_dns", no
+    set dns_tok to map_get_str using payload, "dns_approval_token", ""
+
+    if rollout_id is ""
+      give back server.json using 400, record {ok: no, error: "rollout_id is required"}
+    end
+    set r_row to data.one using stmt_get_https_rollout, record {id: rollout_id}
+    if r_row is nothing
+      give back server.json using 404, record {ok: no, error: ("HTTPS rollout not found: " joined with rollout_id)}
+    end
+
+    set chk to consume_approval using gash_cache, tok, "https_rollback"
+    if not chk.ok
+      give back server.json using chk.status, record {ok: no, code: chk.code, error: chk.error}
+    end
+    set ap to chk.payload
+    if ap.rollout_id is not rollout_id
+      give back server.json using 403, record {ok: no, code: "GASH-E403", error: "approval_token rollout_id mismatch"}
+    end
+
+    set grabtac_url to text.trim using (map_get_str using payload, "grabtaculous_url", (resolve_env_opt using "GASHBOARD_GRABTACULOUS_URL"))
+    set grabtac_tok to text.trim using (map_get_str using payload, "grabtaculous_token", (resolve_env_opt using "GASHBOARD_GRABTACULOUS_TOKEN"))
+    set ready_url to text.trim using (map_get_str using payload, "upstream_ready_url", (resolve_env_opt using "GASHBOARD_UPSTREAM_READY_URL"))
+
+    set target_snap to text.trim using r_row.pre_deploy_snapshot_id
+    if target_snap is ""
+      set target_snap to text.trim using r_row.grabtac_deploy_id
+    end
+
+    set gt_rb_data to {}
+    if (grabtac_url is not "") and (target_snap is not "") and (r_row.workspace is not "")
+      set node_row to data.one using stmt_get_node, record {id: r_row.node_id}
+      if node_row is not nothing
+        set p_int to text.to_integer using node_row.ssh_port
+        set r_urls to []
+        if ready_url is not ""
+          set r_urls to [ready_url]
+        end
+        set gt_rb to bridge_post using "/v1/grabtaculous/proxy", {"ssh_host": node_row.host, "ssh_port": p_int, "host_key_fingerprint": node_row.host_key_fingerprint, "target_url": grabtac_url, "bearer_token": grabtac_tok, "method": "POST", "api_path": "/v1/rollback", "payload": {"deploy_id": target_snap, "workspace": r_row.workspace, "ready_urls": r_urls}}
+        if not gt_rb.configured
+          give back server.json using 503, record {ok: no, code: "GASH-E503", error: "gashboard-bridge is not configured"}
+        end
+        if not gt_rb.ok
+          set st_code to bridge_error_status using gt_rb, 502
+          give back server.json using st_code, record {ok: no, code: gt_rb.code, error: gt_rb.error}
+        end
+        set gt_rb_data to gt_rb.data
+      end
+    end
+
+    set dns_rb_result to {}
+    set dns_snap_id to text.trim using r_row.dns_snapshot_id
+    if rollback_dns and (dns_snap_id is not "")
+      set d_chk to consume_approval using gash_cache, dns_tok, "dns_rollback"
+      if not d_chk.ok
+        give back server.json using d_chk.status, record {ok: no, code: d_chk.code, error: d_chk.error}
+      end
+      set d_row to data.one using stmt_get_dns_snapshot, record {id: dns_snap_id}
+      if d_row is not nothing
+        set creds_res to load_decrypted_namecheap_creds using stmt_get_dns_cred
+        if not creds_res.ok
+          give back server.json using creds_res.status, record {ok: no, code: creds_res.code, error: creds_res.error}
+        end
+        set prior_list to json.parse using d_row.prior_hosts_json
+        set dns_rb to bridge_post using "/v1/dns/namecheap/restore", {"credentials": creds_res.creds, "domain": d_row.domain, "root_domain": "", "subdomain": d_row.subdomain, "email_type": "", "previous_hosts": prior_list}
+        if not dns_rb.ok
+          set st_code to bridge_error_status using dns_rb, 502
+          give back server.json using st_code, record {ok: no, code: dns_rb.code, error: dns_rb.error}
+        end
+        set now_d to call dates.now_utc
+        call data.execute using stmt_mark_dns_snapshot, record {status: "rolled_back", rolled_back_at: now_d.iso, id: dns_snap_id}
+        set dns_rb_result to dns_rb.data
+      end
+    end
+
+    set now_r to call dates.now_utc
+    call data.execute using stmt_mark_https_rollout, record {status: "rolled_back", rolled_back_at: now_r.iso, id: rollout_id}
+
+    set raw_rollouts to data.query using stmt_list_https_rollouts, record {}
+    set rollouts_out to enrich_https_rollouts_for_ui using gash_cache, raw_rollouts
+    set raw_snaps to data.query using stmt_list_dns_snapshots, record {}
+    set snaps_out to enrich_dns_snapshots_for_ui using gash_cache, raw_snaps
+
+    give back server.json using 200, record {ok: yes, rollback: record {rollout_id: rollout_id, domain: r_row.domain, status: "rolled_back", grabtaculous: gt_rb_data, dns: dns_rb_result}, rollouts: rollouts_out, dns_snapshots: snaps_out}
   catch err
     give back server.json using 400, record {ok: no, error: err.message}
   end

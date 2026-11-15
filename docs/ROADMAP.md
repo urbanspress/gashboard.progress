@@ -36,12 +36,12 @@ Delivered Scope:
 
 ## `v0.3.0` — Namecheap DNS + Auto-HTTPS Wizard
 
-**Status:** Approved ([`specifications/GASHBOARD-SPEC-003.md`](../specifications/GASHBOARD-SPEC-003.md))
+**Status:** Complete (`v0.3.0` Released — [`specifications/GASHBOARD-SPEC-003.md`](../specifications/GASHBOARD-SPEC-003.md), [`CHANGELOG.md`](../CHANGELOG.md))
 
-Proposed Scope:
-- **Encrypted Namecheap Credential Vault:** Stores Namecheap API User, API Key, and Whitelisted Client IP encrypted at rest in SQLite via **GRAB `v1.1.0`** `crypto.encrypt_aead` (AES-256-GCM)—never rendered in plaintext in the DOM or logs.
-- **1-Click DNS Record Provisioner & Propagation Preflight:** Configures `A`, `AAAA`, and `CNAME` (`@` / `www` / subdomain) records while preserving existing `MX`/`TXT`/`SPF`/`DKIM` email records intact, and verifies live DNS propagation before ACME issuance to avoid Let's Encrypt rate-limit lockouts.
-- **Grabtaculous Auto-HTTPS Wiring & Instant Rollback:** Dispatches Caddy, Nginx + Certbot, or Cloudflare Tunnel configuration to `grabtaculousd` over SSH (keeping Grisp unprivileged on `127.0.0.1:8765-8772`), verifies live HTTPS + `/_ready`, and supports 1-click DNS + Edge config rollback.
+Delivered Scope:
+- **Encrypted Namecheap Credential Vault:** Stores Namecheap API User, API Key, and Whitelisted Client IP encrypted at rest in SQLite via **GRAB `v1.1.0`** `crypto.encrypt_aead` (AES-256-GCM)—never rendered in plaintext in the DOM, responses, or logs.
+- **1-Click DNS Record Provisioner & Propagation Preflight:** Configures `A`, `AAAA`, and `CNAME` (`@` / `www` / subdomain) records while preserving existing `MX`/`TXT`/`SPF`/`DKIM` email records intact, and verifies live DNS propagation before ACME issuance (`422 GASH-E422`) to avoid Let's Encrypt rate-limit lockouts.
+- **Grabtaculous Auto-HTTPS Wiring & Instant Rollback:** Dispatches Caddy, Nginx + Certbot, or Cloudflare Tunnel configuration to `grabtaculousd` over SSH (keeping Grisp unprivileged on `127.0.0.1:8765-8772`), verifies live HTTPS + `/_ready`, and supports 1-click DNS + Edge config rollback behind `X-CSRF-Token` + single-use `approval_token` (`403`/`409`).
 
 ---
 
