@@ -933,6 +933,18 @@ route "POST" "/api/marketplace/deploy" using req
     end
 
     set plan_rec to chk.payload
+    set req_plan_id to text.trim using (map_get_str using payload, "plan_id", "")
+    if (req_plan_id is not "") and (req_plan_id is not plan_rec.plan_id)
+      give back server.json using 403, record {ok: no, code: "GASH-E403", error: "approval_token plan_id mismatch"}
+    end
+    set req_bp_id to text.trim using (map_get_str using payload, "blueprint_id", "")
+    if (req_bp_id is not "") and (req_bp_id is not plan_rec.blueprint_id)
+      give back server.json using 403, record {ok: no, code: "GASH-E403", error: "approval_token blueprint_id mismatch"}
+    end
+    set req_node_id to text.trim using (map_get_str using payload, "node_id", "")
+    if (req_node_id is not "") and (req_node_id is not plan_rec.node_id)
+      give back server.json using 403, record {ok: no, code: "GASH-E403", error: "approval_token node_id mismatch"}
+    end
     set install_id to "inst_" joined with (crypto.random_hex using 16)
     set snap_id to "snap-" joined with (crypto.random_hex using 16)
     set now_r to call dates.now_utc
@@ -1163,6 +1175,18 @@ route "POST" "/api/fleet/dna/deploy" using req
     end
 
     set prev_rec to chk.payload
+    set req_preview_id to text.trim using (map_get_str using payload, "preview_id", "")
+    if (req_preview_id is not "") and (req_preview_id is not prev_rec.preview_id)
+      give back server.json using 403, record {ok: no, code: "GASH-E403", error: "approval_token preview_id mismatch"}
+    end
+    set req_node_id to text.trim using (map_get_str using payload, "node_id", "")
+    if (req_node_id is not "") and (req_node_id is not prev_rec.node_id)
+      give back server.json using 403, record {ok: no, code: "GASH-E403", error: "approval_token node_id mismatch"}
+    end
+    set req_dna_dig to text.trim using (map_get_str using payload, "dna_digest", "")
+    if (req_dna_dig is not "") and (req_dna_dig is not prev_rec.dna_digest)
+      give back server.json using 403, record {ok: no, code: "GASH-E403", error: "approval_token dna_digest mismatch"}
+    end
     set dep_id to "dep_" joined with (crypto.random_hex using 16)
     set snap_id to "snap-" joined with (crypto.random_hex using 16)
     set ready_status to "200"
@@ -1227,6 +1251,14 @@ route "POST" "/api/fleet/rollback" using req
     set chk to consume_approval using gash_cache, tok, "rollback"
     if not chk.ok
       give back server.json using chk.status, record {ok: no, code: chk.code, error: chk.error}
+    end
+    set ap to chk.payload
+    if (ap.snapshot_id is not "") and (ap.snapshot_id is not snap_id)
+      give back server.json using 403, record {ok: no, code: "GASH-E403", error: "approval_token snapshot_id mismatch"}
+    end
+    set req_node_id to text.trim using (map_get_str using payload, "node_id", "")
+    if (req_node_id is not "") and (ap.node_id is not "") and (req_node_id is not ap.node_id)
+      give back server.json using 403, record {ok: no, code: "GASH-E403", error: "approval_token node_id mismatch"}
     end
 
     call data.execute using stmt_update_deployment_status, record {status: "rolled_back", ready_status: "200", snapshot_id: snap_id}
@@ -1459,6 +1491,14 @@ route "POST" "/api/db/mutate/execute" using req
       give back server.json using chk.status, record {ok: no, code: chk.code, error: chk.error}
     end
     set plan to chk.payload
+    set req_snap_id to text.trim using (map_get_str using payload, "snapshot_id", "")
+    if (req_snap_id is not "") and (req_snap_id is not plan.snapshot_id)
+      give back server.json using 403, record {ok: no, code: "GASH-E403", error: "approval_token snapshot_id mismatch"}
+    end
+    set req_target_id to text.trim using (map_get_str using payload, "target_id", "")
+    if (req_target_id is not "") and (req_target_id is not plan.target_id)
+      give back server.json using 403, record {ok: no, code: "GASH-E403", error: "approval_token target_id mismatch"}
+    end
     set br to bridge_post using "/v1/db/mutate/execute", {"target": plan.target, "sql": plan.sql, "snapshot_id": plan.snapshot_id}
     if not br.configured
       give back server.json using 503, record {ok: no, code: "GASH-E503", error: "gashboard-bridge is not configured"}
@@ -1719,6 +1759,14 @@ route "POST" "/api/dns/apply" using req
       give back server.json using chk.status, record {ok: no, code: chk.code, error: chk.error}
     end
     set p_rec to chk.payload
+    set req_plan_id to text.trim using (map_get_str using payload, "plan_id", "")
+    if (req_plan_id is not "") and (req_plan_id is not p_rec.plan_id)
+      give back server.json using 403, record {ok: no, code: "GASH-E403", error: "approval_token plan_id mismatch"}
+    end
+    set req_dom to text.trim using (map_get_str using payload, "domain", "")
+    if (req_dom is not "") and (req_dom is not p_rec.domain)
+      give back server.json using 403, record {ok: no, code: "GASH-E403", error: "approval_token domain mismatch"}
+    end
 
     set creds_res to load_decrypted_namecheap_creds using stmt_get_dns_cred
     if not creds_res.ok
@@ -1940,6 +1988,14 @@ route "POST" "/api/https/apply" using req
       give back server.json using chk.status, record {ok: no, code: chk.code, error: chk.error}
     end
     set p_rec to chk.payload
+    set req_plan_id to text.trim using (map_get_str using payload, "plan_id", "")
+    if (req_plan_id is not "") and (req_plan_id is not p_rec.plan_id)
+      give back server.json using 403, record {ok: no, code: "GASH-E403", error: "approval_token plan_id mismatch"}
+    end
+    set req_dom to text.trim using (map_get_str using payload, "domain", "")
+    if (req_dom is not "") and (req_dom is not p_rec.domain)
+      give back server.json using 403, record {ok: no, code: "GASH-E403", error: "approval_token domain mismatch"}
+    end
 
     set prop_br to bridge_post using "/v1/dns/propagation/check", {"domain": p_rec.domain, "expected_ip": p_rec.expected_ip, "expected_ipv6": p_rec.expected_ipv6, "edge_proxy": p_rec.edge_proxy, "fail_on_unpropagated": yes}
     if not prop_br.configured
@@ -2083,6 +2139,10 @@ route "POST" "/api/https/rollback" using req
       set d_chk to consume_approval using gash_cache, dns_tok, "dns_rollback"
       if not d_chk.ok
         give back server.json using d_chk.status, record {ok: no, code: d_chk.code, error: d_chk.error}
+      end
+      set d_ap to d_chk.payload
+      if (d_ap.snapshot_id is not "") and (d_ap.snapshot_id is not dns_snap_id)
+        give back server.json using 403, record {ok: no, code: "GASH-E403", error: "dns_approval_token snapshot_id mismatch"}
       end
       set d_row to data.one using stmt_get_dns_snapshot, record {id: dns_snap_id}
       if d_row is not nothing

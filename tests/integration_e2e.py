@@ -854,6 +854,7 @@ def gate_4_live_6layer_e2e():
         assert st == 200, f"Marketplace deploy failed: {dep_raw}"
         dep_doc = json.loads(dep_raw)
         assert dep_doc["install"]["blueprint_id"] == "grablab-grex-bundle"
+        mp_rb_tok = dep_doc["rollback_approval_token"]
         compose_path = deploy_ws / "deploy" / "docker-compose.yml"
         assert compose_path.exists(), f"Missing {compose_path}; deploy_ws={list(deploy_ws.rglob('*'))}; dep_raw={dep_raw}"
 
@@ -954,6 +955,15 @@ def gate_4_live_6layer_e2e():
             body={"snapshot_id": snap_id, "node_id": node_id, "approval_token": rb_tok},
         )
         assert st == 409 and json.loads(rb_rep_raw)["code"] == "GASH-E409"
+
+        # Mismatched approval_token target binding must fail closed with 403 GASH-E403 (GROXY-SAFE-001)
+        st, _, rb_mismatch_raw = http_request(
+            f"{gash_url}/api/fleet/rollback",
+            method="POST",
+            headers=csrf_hdrs,
+            body={"snapshot_id": snap_id, "node_id": node_id, "approval_token": mp_rb_tok},
+        )
+        assert st == 403 and json.loads(rb_mismatch_raw)["code"] == "GASH-E403", f"Expected 403 GASH-E403 on mismatched rollback token, got {st} {rb_mismatch_raw}"
 
         # ----------------------------------------------------------------------
         # v0.2.0 E2E: Light/Dark Theme Switcher Persistence (Zero-FOUC SSR + SQLite)

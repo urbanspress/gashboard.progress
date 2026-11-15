@@ -1,12 +1,13 @@
 # HANDOFF.md — Gashboard
 
-- **Current Owner:** Google Antigravity -> Ready for **`Orchestrator (Argon)`** (`v0.3.0` Complete & Released; Mandatory Step 5 Pre-`v1.0.0` Cross-Layer Audit Next)
+- **Current Owner:** Project Owner / Google Antigravity (Pre-`v1.0.0` Multi-Repo Audit Complete & Remediated; **`GASHBOARD-SPEC-100.md`** in Review)
 - **Current Milestone State:**
   - **`v0.1.0` — `Complete`** ([`specifications/GASHBOARD-SPEC-001.md`](specifications/GASHBOARD-SPEC-001.md), [`CHANGELOG.md`](CHANGELOG.md), published on `origin` & `stable`)
   - **`v0.2.0` — `Complete`** ([`specifications/GASHBOARD-SPEC-002.md`](specifications/GASHBOARD-SPEC-002.md), [`CHANGELOG.md`](CHANGELOG.md), `docs/releases/pdf/Gashboard-v0.2.0-Guide.pdf`, published on `origin` & `stable`)
   - **`v0.3.0` — `Complete`** ([`specifications/GASHBOARD-SPEC-003.md`](specifications/GASHBOARD-SPEC-003.md), [`CHANGELOG.md`](CHANGELOG.md), `docs/releases/pdf/Gashboard-v0.3.0-Guide.pdf`, verified 100% across Gates 1–4 and published on `origin` & `stable`)
-  - **`v1.0.0` — `Planned (Audit Gate Next)`** ([`docs/ROADMAP.md`](docs/ROADMAP.md))
-- **Next Action:** Pause and instruct the project owner to switch to **`Orchestrator (Argon)`** for an independent pre-`v1.0.0` security, pure-`Grex JS` zero-`<div>`/WCAG AA, SSH tunnel, Visual DB Manager, and Namecheap DNS/Auto-HTTPS cross-layer audit across **`grabman`**, **`grabtaculous`**, and **`gashboard`**.
+  - **`v1.0.0` — `Specification in Review`** ([`specifications/GASHBOARD-SPEC-100.md`](specifications/GASHBOARD-SPEC-100.md), [`docs/ROADMAP.md`](docs/ROADMAP.md))
+- **Pre-`v1.0.0` Audit Summary:** Independent multi-repo Step 5 audit completed with two hardening improvements committed to `origin/main` (strict target-binding `approval_token` validation in `src/gashboard.grab` + expanded `GRAB-E401` SSH key/TLS credential segment blocking in `bridge/internal/dbinspect/security.go` + `403 GASH-E403` E2E regression test in `tests/integration_e2e.py`). All 4 Gashboard verification gates (`grab check`, canonical `grab format`, `node --test`, `go build`/`go test`/`govulncheck`, and 6-layer `integration_e2e.py`) passed `100%` with all 5 upstream repos clean.
+- **Next Action:** Pause at the Spec-First Approval Gate (`AGENTS.md`) and await explicit project-owner approval of [`specifications/GASHBOARD-SPEC-100.md`](specifications/GASHBOARD-SPEC-100.md) before implementing the `v1.0.0` runtime freeze, launcher packaging, `v1.0.0` tagging, and synchronized `origin` + `stable` release promotion.
 
 ---
 
@@ -29,4 +30,4 @@
 ---
 
 ## Next Step Model Guidance
-- **Mandatory Pre-`v1.0.0` Pause Gate (`AGENTS.md`):** **`v0.3.0`** is 100% complete and verified across all 4 gates. Pause and ask the user to switch to **`Orchestrator (Argon)`** for the independent **Step 5 Pre-`v1.0.0` Cross-Layer Audit** across **`grabman`**, **`grabtaculous`**, and **`gashboard`** before freezing `v1.0.0`.
+- **Recommended Model After Spec Approval (`AGENTS.md` 4-Tier Routing):** Once you approve [`specifications/GASHBOARD-SPEC-100.md`](specifications/GASHBOARD-SPEC-100.md) (alongside `GRABMAN-SPEC-100.md` and `GRABTACULOUS-SPEC-100.md`), switch to **`Google Hydrogen (High)`** for clean single-repo `v1.0.0` freeze/version implementation and verification gates, or stay on / switch to **`Orchestrator (Argon)`** when orchestrating the simultaneous 3-repo `v1.0.0` build, walkthrough PDF generation, and synchronized `origin` + `stable` promotion across Step 5.

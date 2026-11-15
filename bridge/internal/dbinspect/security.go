@@ -81,6 +81,8 @@ var sensitiveSegments = map[string]bool{
 	".gnupg":          true,
 	"id_rsa":          true,
 	"id_ed25519":      true,
+	"id_ecdsa":        true,
+	"id_dsa":          true,
 	"known_hosts":     true,
 	"authorized_keys": true,
 	"secrets":         true,
@@ -92,7 +94,9 @@ func hasSensitiveSegment(relSlash string) bool {
 		if low == "" || low == "." {
 			continue
 		}
-		if low == ".." || sensitiveSegments[low] || strings.HasPrefix(low, ".env") {
+		if low == ".." || sensitiveSegments[low] || strings.HasPrefix(low, ".env") ||
+			strings.HasSuffix(low, ".pem") || strings.HasSuffix(low, ".key") ||
+			strings.HasSuffix(low, ".p12") || strings.HasSuffix(low, ".pfx") {
 			return true
 		}
 	}

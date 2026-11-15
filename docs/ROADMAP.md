@@ -47,8 +47,8 @@ Delivered Scope:
 
 ## `v1.0.0` — Production Freeze, Independent `Orchestrator (Argon)` Multi-Repo Audit & Desktop Launcher Packaging
 
-**Status:** Planned
+**Status:** Specification in Review ([`specifications/GASHBOARD-SPEC-100.md`](../specifications/GASHBOARD-SPEC-100.md))
 
-Planned Scope:
-- Independent **`Orchestrator (Argon)`** pre-`v1.0.0` cross-layer security, pure-`Grex JS` DOM/accessibility, SSH tunnel, DB manager, and DNS/Auto-HTTPS rollout/rollback audit across all 6 ecosystem layers.
-- Branded release archive, walkthrough PDF, and synchronized `v1.0.0` release on `origin` and `stable` (providing the direct runtime foundation for **Step 6 — Groxy Desk**).
+Approved-Spec / Review Scope:
+- Completed independent pre-`v1.0.0` multi-repository cross-layer security, pure-`Grex JS v1.0.0` zero-`<div>`/WCAG AA DOM, SSH tunnel, Visual DB Manager, Namecheap DNS/Auto-HTTPS, and `ADR-025c` contract audit; remediated two discovered hardening items (target-binding `approval_token` validation in `src/gashboard.grab` and expanded SSH key/TLS credential segment blocking in `bridge/internal/dbinspect/security.go`) and verified `100%` pass across Gates 1–4 (`specifications/GASHBOARD-SPEC-100.md`).
+- Pending explicit owner approval of `specifications/GASHBOARD-SPEC-100.md`: bump `gashboard` frozen runtime/UI/bridge version strings to `v1.0.0`, generate branded desktop launcher archive & walkthrough PDF, and synchronize `v1.0.0` release on `origin` and `stable` (providing the direct runtime foundation for **Step 6 — Groxy Desk**).
