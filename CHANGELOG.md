@@ -6,6 +6,26 @@ The format follows Semantic Versioning (`MAJOR.MINOR.PATCH`) and the GRAB Ecosys
 
 ---
 
+## [0.2.0] - 2026-11-15
+
+### Added
+- **WCAG AA Light/Dark Theme Switcher (`public/gashboard/theme.js`, `public/gashboard/gashboard.css`, `views/dashboard.grab.html`, `src/gashboard.grab`):**
+  - Reactive **`Grex JS v1.0.0`** `createTheme()` toggle (`[data-grex-theme="light" | "dark"]`) in the dashboard header with `>= 4.5:1` verified contrast (`computeContrastRatio()`) across all semantic surfaces and visible `:focus-visible` outlines.
+  - Persists user choice in both SQLite (`ui_preferences` via `POST /api/preferences/theme`) and local storage, rendering `data-grex-theme` server-side in `views/dashboard.grab.html` for zero FOUC on refresh.
+- **Built-In phpMyAdmin-Style Visual Database Manager (`bridge/internal/dbinspect/`, `bridge/cmd/gashboard-bridge/`, `migrations/002_db_manager_and_theme.grab`, `src/gashboard.grab`, `public/gashboard/db-manager.js`):**
+  - Operates strictly over Gashboard's `known_hosts`-pinned `127.0.0.1` SSH tunnels (`PostgreSQL`, `MariaDB`) or workspace-confined local SQLite (`--sqlite-root`; rejects path traversal and `.env`/`.ssh`/`.git` targets with `403 GRAB-E401`)—never exposing a public database admin port on any VPS and rejecting direct remote DB hosts (`422 GASH-E422`).
+  - **Schema & Table Explorer:** Pure `Grex JS v1.0.0` semantic inspection of databases, tables, columns, types, indexes, foreign keys, and row counts (`divCount === 0`, `innerHTMLWriteCount === 0`).
+  - **Paginated Row Browser & `ADR-025c` Fidelity:** Filters, sorts, and paginates (`1 <= limit <= 100`) rows with parameterized identifiers/values while preserving all `BIGINT`/`DECIMAL`/`NUMERIC` values as exact base-10 wire strings (rejecting float drift).
+  - **Guarded Read-Only Query Runner & `GROXY-SAFE-001` Write Gate:** Defaults `POST /api/db/query` to strictly single-statement read-only transactions (`SELECT`/`SHOW`/`DESCRIBE`/`EXPLAIN`, blocking writes/DDL/multi-statement SQL with `403 GASH-E403`). Every mutation, DDL change, or SQL import goes through `/api/db/mutate/plan` -> automatic SHA-256-verified **Pre-Mutation Snapshot** -> `/api/db/mutate/execute` (`X-CSRF-Token` + single-use `approval_token`; `403` invalid, `409` replay), plus SQL export (`/api/db/export`) and **1-Click Pre-Mutation Snapshot Restore** (`/api/db/snapshots/restore`).
+
+### Verification
+- **Gate 1 (GRAB & Format Parity):** `grab check` + canonical `grab format` byte-for-byte parity + zero `<div>` / zero `innerHTML` scans — **100% Pass**.
+- **Gate 2 (Unit, Zero-`<div>` DOM, WCAG AA & Contracts):** `node --test tests/*.test.js` verifying Light/Dark `>= 4.5:1` contrast, `divCount === 0`, `innerHTMLWriteCount === 0`, `ADR-025c` string fidelity, and CSRF/replay guards — **100% Pass**.
+- **Gate 3 (Go Bridge):** `go build ./...`, `go test -count=1 ./...` (including tunneled Postgres wire & Pre-Mutation Snapshot tests), and `govulncheck ./...` (`0` vulnerabilities) — **100% Pass**.
+- **Gate 4 (Live 6-Layer E2E Integration):** `python tests/integration_e2e.py` verifying persisted Dark/Light SSR reload, live tunneled PostgreSQL query over `127.0.0.1` SSH tunnel, `GRAB-E401` confinement, `limit <= 100` cap, blocked unapproved write, approved row mutation + automatic Pre-Mutation Snapshot + `409` replay rejection, 1-click Snapshot restore, and untouched peer repos — **100% Pass**.
+
+---
+
 ## [0.1.0] - 2026-11-15
 
 ### Added

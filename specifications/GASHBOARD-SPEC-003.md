@@ -1,6 +1,6 @@
 # GASHBOARD-SPEC-003: Gashboard `v0.3.0` — Namecheap DNS + Auto-HTTPS Wizard
 
-- **Status:** Specification in Review (Awaiting Project-Owner Approval — zero `v0.3.0` application code written)
+- **Status:** Approved (Next Milestone after `v0.2.0` — zero `v0.3.0` application code written)
 - **Milestone:** `v0.3.0` — Step 5 Zero-Guesswork Domain DNS & Automatic HTTPS Orchestration
 - **Foundational Upstream & Peer Baselines:**
   - **GRAB:** `v1.1.0` (`urbanspress/grab` — `use server`, `use data`, `use cache`, `use http`, `use json`, `use crypto` AES-256-GCM, `use env`, `ADR-005`, `ADR-017`, `ADR-025c`)

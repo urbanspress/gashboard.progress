@@ -10,9 +10,11 @@ import {
   createApiClient,
   GASHBOARD_VERSION,
   isExactDecimalString,
+  isValidPaginationStrings,
   isValidSshFingerprint,
 } from "../public/gashboard/api-client.js";
 import { formatSafeConnectionHint } from "../public/gashboard/tunnels.js";
+import { verifyThemeWcagContrast } from "../public/gashboard/theme.js";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const REPO_ROOT = path.resolve(__dirname, "..");
@@ -49,11 +51,25 @@ test("vendored Grex JS v1.0.0 runtime & manifest match C:\\Development\\grex-js\
 });
 
 test("ADR-025c exact base-10 numeric wire validation rejects floats and precision drift", () => {
-  assert.equal(GASHBOARD_VERSION, "0.1.0");
+  assert.equal(GASHBOARD_VERSION, "0.2.0");
   assert.equal(isExactDecimalString("1000.00"), true);
+  assert.equal(isExactDecimalString("12345678901234567890.1234"), true);
+  assert.equal(isExactDecimalString("9007199254740993"), true);
   assert.equal(isExactDecimalString("19.99"), true);
   assert.equal(isExactDecimalString("22"), true);
   assert.equal(isExactDecimalString("0"), true);
+
+  assert.equal(isValidPaginationStrings("1", "25"), true);
+  assert.equal(isValidPaginationStrings("2", "100"), true);
+  assert.equal(isValidPaginationStrings("1", "101"), false);
+  assert.equal(isValidPaginationStrings("0", "25"), false);
+  assert.equal(isValidPaginationStrings(1, 25), false);
+  assert.equal(isValidPaginationStrings("1.5", "25"), false);
+
+  const lightWcag = verifyThemeWcagContrast("light");
+  const darkWcag = verifyThemeWcagContrast("dark");
+  assert.equal(lightWcag.ok, true, `Light palette WCAG AA failed: ${JSON.stringify(lightWcag.checks)}`);
+  assert.equal(darkWcag.ok, true, `Dark palette WCAG AA failed: ${JSON.stringify(darkWcag.checks)}`);
 
   // Reject raw JS numbers / floats and IEEE-754 drift patterns
   assert.equal(isExactDecimalString(19.99), false);

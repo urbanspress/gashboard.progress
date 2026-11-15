@@ -4,8 +4,9 @@ import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 
-import { auditAccessibility, auditDom } from "../public/gashboard/grex.js";
+import { auditAccessibility, auditDom, computeContrastRatio } from "../public/gashboard/grex.js";
 import { mountGashboardDashboard, SAMPLE_VPS_NODES } from "../public/gashboard/dashboard.js";
+import { THEME_PALETTES, verifyThemeWcagContrast } from "../public/gashboard/theme.js";
 import { DomDocument } from "./helpers/dom-shim.js";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
@@ -15,7 +16,13 @@ function createMockFetch(csrfExpected) {
   const nodes = SAMPLE_VPS_NODES.map((n) => ({ ...n }));
   const tunnels = [];
   const snapshots = [];
+  const dbSnapshots = [];
   const approvals = new Map();
+  let activeTheme = "light";
+  const dbRowsState = [
+    { id: "9007199254740993", sku: "SKU-ALPHA", amount_exact: "12345678901234567890.1234", qty: "42" },
+    { id: "9007199254740995", sku: "SKU-BETA", amount_exact: "99.9500", qty: "7" },
+  ];
   let reqCount = 0;
 
   return async (url, init = {}) => {
@@ -32,6 +39,232 @@ function createMockFetch(csrfExpected) {
       }
     }
     const body = init.body ? JSON.parse(init.body) : {};
+
+    if (url === "/api/preferences/theme" && method === "GET") {
+      return { ok: true, status: 200, text: async () => JSON.stringify({ ok: true, theme: activeTheme }) };
+    }
+    if (url === "/api/preferences/theme" && method === "POST") {
+      if (body.theme !== "light" && body.theme !== "dark") {
+        return { ok: false, status: 422, text: async () => JSON.stringify({ ok: false, code: "GASH-E422", error: "Invalid theme" }) };
+      }
+      activeTheme = body.theme;
+      return { ok: true, status: 200, text: async () => JSON.stringify({ ok: true, theme: activeTheme }) };
+    }
+    if (url === "/api/db/targets" && method === "GET") {
+      return {
+        ok: true,
+        status: 200,
+        text: async () =>
+          JSON.stringify({
+            ok: true,
+            targets: [
+              {
+                target_id: "sqlite:gashboard.db",
+                label: "Confined Workspace SQLite (gashboard.db)",
+                engine: "sqlite",
+                sqlite_path: "gashboard.db",
+              },
+            ],
+          }),
+      };
+    }
+    if (url === "/api/db/schema" && method === "POST") {
+      return {
+        ok: true,
+        status: 200,
+        text: async () =>
+          JSON.stringify({
+            ok: true,
+            engine: "sqlite",
+            target_label: "gashboard.db",
+            databases: ["main"],
+            tables: [
+              {
+                name: "invoices",
+                schema: "main",
+                row_count: String(dbRowsState.length),
+                columns: [
+                  { name: "id", type: "INTEGER", nullable: false, primary_key: true },
+                  { name: "sku", type: "TEXT", nullable: false, primary_key: false },
+                  { name: "amount_exact", type: "TEXT", nullable: false, primary_key: false },
+                  { name: "qty", type: "INTEGER", nullable: false, primary_key: false },
+                ],
+                indexes: [{ name: "idx_invoices_sku", unique: false, columns: ["sku"] }],
+                foreign_keys: [],
+              },
+            ],
+          }),
+      };
+    }
+    if (url === "/api/db/rows" && method === "POST") {
+      const lNum = Number.parseInt(String(body.limit || "25"), 10);
+      if (lNum > 100 || lNum < 1) {
+        return { ok: false, status: 422, text: async () => JSON.stringify({ ok: false, code: "GASH-E422", error: "limit <= 100 required" }) };
+      }
+      return {
+        ok: true,
+        status: 200,
+        text: async () =>
+          JSON.stringify({
+            ok: true,
+            engine: "sqlite",
+            table: body.table || "invoices",
+            page: String(body.page || "1"),
+            limit: String(body.limit || "25"),
+            total_rows: String(dbRowsState.length),
+            total_pages: "1",
+            columns: [
+              { name: "id", type: "INTEGER", nullable: false },
+              { name: "sku", type: "TEXT", nullable: false },
+              { name: "amount_exact", type: "TEXT", nullable: false },
+              { name: "qty", type: "INTEGER", nullable: false },
+            ],
+            rows: dbRowsState.map((r) => ({ ...r })),
+          }),
+      };
+    }
+    if (url === "/api/db/query" && method === "POST") {
+      const upper = String(body.sql || "").trim().toUpperCase();
+      if (!upper.startsWith("SELECT") && !upper.startsWith("EXPLAIN") && !upper.startsWith("SHOW")) {
+        return {
+          ok: false,
+          status: 403,
+          text: async () => JSON.stringify({ ok: false, code: "GASH-E403", error: "Read-only runner blocked write statement" }),
+        };
+      }
+      return {
+        ok: true,
+        status: 200,
+        text: async () =>
+          JSON.stringify({
+            ok: true,
+            engine: "sqlite",
+            verb: "SELECT",
+            read_only: true,
+            truncated: false,
+            row_count: String(dbRowsState.length),
+            columns: [
+              { name: "id", type: "INTEGER" },
+              { name: "sku", type: "TEXT" },
+              { name: "amount_exact", type: "TEXT" },
+              { name: "qty", type: "INTEGER" },
+            ],
+            rows: dbRowsState.map((r) => ({ ...r })),
+          }),
+      };
+    }
+    if (url === "/api/db/mutate/plan" && method === "POST") {
+      const snapId = `dbsnap_mock_${reqCount}`;
+      const tok = `apprv-db-mut-${reqCount}`;
+      approvals.set(tok, { used: false, kind: "db_mutate", snapId, sql: body.sql, backupRows: dbRowsState.map((r) => ({ ...r })) });
+      const snapRec = {
+        id: snapId,
+        target_id: "sqlite:gashboard.db",
+        target_kind: "sqlite",
+        table_name: "invoices",
+        statement_preview: `Mutation preview on invoices`,
+        snapshot_path: `snapshots/${snapId}.json`,
+        backup_sha256: "sha256:abcdef1234567890",
+        status: "planned",
+        created_at: "2026-11-15T06:00:00Z",
+        restored_at: "",
+      };
+      dbSnapshots.unshift(snapRec);
+      return {
+        ok: true,
+        status: 200,
+        text: async () =>
+          JSON.stringify({
+            ok: true,
+            snapshot_id: snapId,
+            target_id: "sqlite:gashboard.db",
+            engine: "sqlite",
+            kind: "dml",
+            verb: "DELETE",
+            table_name: "invoices",
+            statement_count: "1",
+            pre_row_count: String(dbRowsState.length),
+            plain_summary: "Row mutation (DELETE on invoices)",
+            snapshot_path: snapRec.snapshot_path,
+            backup_sha256: snapRec.backup_sha256,
+            approval_token: tok,
+          }),
+      };
+    }
+    if (url === "/api/db/mutate/execute" && method === "POST") {
+      const rec = approvals.get(body.approval_token);
+      if (!rec || rec.kind !== "db_mutate") {
+        return { ok: false, status: 403, text: async () => JSON.stringify({ ok: false, code: "GASH-E403", error: "Invalid approval_token" }) };
+      }
+      if (rec.used) {
+        return { ok: false, status: 409, text: async () => JSON.stringify({ ok: false, code: "GASH-E409", error: "approval_token already consumed" }) };
+      }
+      rec.used = true;
+      dbRowsState.pop();
+      const rbTok = `apprv-db-rb-${reqCount}`;
+      approvals.set(rbTok, { used: false, kind: "db_restore", snapId: rec.snapId, backupRows: rec.backupRows });
+      const snap = dbSnapshots.find((s) => s.id === rec.snapId);
+      if (snap) {
+        snap.status = "executed";
+        snap.restore_approval_token = rbTok;
+      }
+      return {
+        ok: true,
+        status: 200,
+        text: async () =>
+          JSON.stringify({
+            ok: true,
+            execution: { ok: true, affected_rows: "1", snapshot_id: rec.snapId },
+            snapshot_id: rec.snapId,
+            restore_approval_token: rbTok,
+            snapshots: dbSnapshots,
+          }),
+      };
+    }
+    if (url === "/api/db/export" && method === "POST") {
+      return {
+        ok: true,
+        status: 200,
+        text: async () =>
+          JSON.stringify({
+            ok: true,
+            engine: "sqlite",
+            sql_dump: "INSERT INTO \"invoices\" VALUES ('9007199254740993', 'SKU-ALPHA', '12345678901234567890.1234', 42);",
+            sha256: "sha256:exportok",
+            table_count: "1",
+            row_count: String(dbRowsState.length),
+          }),
+      };
+    }
+    if (url === "/api/db/snapshots" && method === "GET") {
+      return { ok: true, status: 200, text: async () => JSON.stringify({ ok: true, snapshots: dbSnapshots, audits: [] }) };
+    }
+    if (url === "/api/db/snapshots/restore" && method === "POST") {
+      const rec = approvals.get(body.approval_token);
+      if (!rec || rec.kind !== "db_restore") {
+        return { ok: false, status: 403, text: async () => JSON.stringify({ ok: false, code: "GASH-E403", error: "Invalid restore approval_token" }) };
+      }
+      if (rec.used) {
+        return { ok: false, status: 409, text: async () => JSON.stringify({ ok: false, code: "GASH-E409", error: "restore token already used" }) };
+      }
+      rec.used = true;
+      dbRowsState.splice(0, dbRowsState.length, ...rec.backupRows.map((r) => ({ ...r })));
+      const snap = dbSnapshots.find((s) => s.id === body.snapshot_id);
+      if (snap) {
+        snap.status = "restored";
+        delete snap.restore_approval_token;
+      }
+      return {
+        ok: true,
+        status: 200,
+        text: async () =>
+          JSON.stringify({
+            ok: true,
+            restore: { ok: true, snapshot_id: body.snapshot_id, restored_rows: String(dbRowsState.length), status: "restored" },
+            snapshots: dbSnapshots,
+          }),
+      };
+    }
 
     if (url === "/api/vps" && method === "GET") {
       return { ok: true, status: 200, text: async () => JSON.stringify({ ok: true, nodes }) };
@@ -208,7 +441,15 @@ test("templates and custom UI JS modules contain zero <div> tags and zero unsafe
   assert.equal(/<\s*\/?\s*div\b/i.test(viewHtml), false, "dashboard.grab.html must have zero <div> elements");
   assert.equal(/\.innerHTML/i.test(viewHtml), false, "dashboard.grab.html must have zero .innerHTML references");
 
-  const jsFiles = ["api-client.js", "marketplace.js", "tunnels.js", "fleet-dna.js", "dashboard.js"];
+  const jsFiles = [
+    "api-client.js",
+    "theme.js",
+    "marketplace.js",
+    "tunnels.js",
+    "fleet-dna.js",
+    "db-manager.js",
+    "dashboard.js",
+  ];
   for (const name of jsFiles) {
     const src = fs.readFileSync(path.join(REPO_ROOT, "public", "gashboard", name), "utf8");
     // Strip JS comments before scanning for <div> or .innerHTML usage in code.
@@ -220,8 +461,17 @@ test("templates and custom UI JS modules contain zero <div> tags and zero unsafe
   }
 });
 
-test("Gashboard dashboard mounts with 0 <div>s, 0 innerHTML writes, and 100% WCAG AA pass", async () => {
+test("Gashboard dashboard mounts with 0 <div>s, 0 innerHTML writes, Light/Dark WCAG AA toggle, and Visual DB Manager", async () => {
   const doc = new DomDocument();
+  doc.documentElement.setAttribute("data-grex-theme", "light");
+  const header = doc.createElement("header");
+  const toggleBtn = doc.createElement("button");
+  toggleBtn.setAttribute("type", "button");
+  toggleBtn.setAttribute("id", "gashboard-theme-toggle");
+  toggleBtn.textContent = "Switch to Dark Mode";
+  header.appendChild(toggleBtn);
+  doc.body.appendChild(header);
+
   const root = doc.createElement("main");
   root.setAttribute("id", "gashboard-root");
   doc.body.appendChild(root);
@@ -240,7 +490,16 @@ test("Gashboard dashboard mounts with 0 <div>s, 0 innerHTML writes, and 100% WCA
   assert.equal(audit.a11yOk, true, `WCAG accessibility issues: ${JSON.stringify(audit.a11yIssues)}`);
   assert.equal(doc.querySelectorAll("div").length, 0);
 
-  // Full interactive end-to-end UI simulation
+  // Light <-> Dark Theme Switcher persistence & Grex data-grex-theme verification
+  assert.equal(handle.theme.getTheme(), "light");
+  assert.equal(doc.documentElement.getAttribute("data-grex-theme"), "light");
+  const darkRes = await handle.theme.toggle();
+  assert.equal(darkRes, "dark");
+  assert.equal(doc.documentElement.getAttribute("data-grex-theme"), "dark");
+  assert.equal(toggleBtn.getAttribute("aria-pressed"), "true");
+  assert.equal(toggleBtn.textContent, "Switch to Light Mode");
+
+  // Full interactive end-to-end UI simulation + Visual DB Manager flows
   const regRes = await handle.registerVps();
   assert.equal(regRes.ok, true);
   assert.equal(handle.getNodes().length, 3);
@@ -266,6 +525,27 @@ test("Gashboard dashboard mounts with 0 <div>s, 0 innerHTML writes, and 100% WCA
   const rbRes = await handle.fleetDna.triggerRollback(dnaDep.deployment.snapshot_id);
   assert.equal(rbRes.rollback.ready_status, "200");
 
+  // Visual DB Manager: schema -> exact ADR-025c paginated rows -> read-only block -> Plan/Snapshot/Execute -> 1-Click Restore
+  const scRes = await handle.dbManager.loadSchema();
+  assert.equal(scRes.tables[0].name, "invoices");
+  const rowRes = await handle.dbManager.browseRows();
+  assert.equal(rowRes.rows[0].amount_exact, "12345678901234567890.1234");
+  assert.equal(rowRes.rows[0].id, "9007199254740993");
+
+  // Block write inside Read-Only runner
+  doc.getElementById("db-sql-input").value = "DELETE FROM invoices WHERE sku = 'SKU-BETA'";
+  const blockedQ = await handle.dbManager.runReadOnlyQuery();
+  assert.equal(blockedQ, null);
+  assert.match(handle.dbManager.getState().error, /blocked/i);
+
+  // Plan + Pre-Mutation Snapshot + Execute + 1-Click Restore
+  const mutPlan = await handle.dbManager.planMutation();
+  assert.ok(mutPlan.snapshot_id && mutPlan.approval_token);
+  const mutExec = await handle.dbManager.executeMutation();
+  assert.equal(mutExec.execution.affected_rows, "1");
+  const restRes = await handle.dbManager.restoreSnapshot(mutPlan.snapshot_id, mutExec.restore_approval_token);
+  assert.equal(restRes.restore.restored_rows, "2");
+
   // Re-run full DOM audit after all dynamic updates
   const postAudit = auditDom(root);
   assert.equal(postAudit.ok, true, `Post-interaction DOM a11y issues: ${JSON.stringify(postAudit.issues)}`);
@@ -277,27 +557,31 @@ test("Gashboard dashboard mounts with 0 <div>s, 0 innerHTML writes, and 100% WCA
   await assert.rejects(() => handle.registerVps(), /known_hosts pinning/i);
 });
 
-test("Gashboard CSS color pairs satisfy WCAG AA contrast (>= 4.5:1) via Grex auditAccessibility()", () => {
-  const pairs = [
-    ["Light primary text", "#0f172a", "#f8fafc"],
-    ["Light surface text", "#0f172a", "#ffffff"],
-    ["Light muted text", "#475569", "#ffffff"],
-    ["Primary button", "#ffffff", "#047857"],
-    ["Light danger alert", "#991b1b", "#fef2f2"],
-    ["Light pass alert", "#065f46", "#ecfdf5"],
-    ["Dark primary text", "#f8fafc", "#0f172a"],
-    ["Dark surface text", "#f8fafc", "#1e293b"],
-    ["Dark muted text", "#cbd5e1", "#1e293b"],
-    ["Dark danger alert", "#fecaca", "#7f1d1d"],
-    ["Dark pass alert", "#d1fae5", "#064e3b"],
-  ];
+test("Gashboard Light and Dark color palettes satisfy WCAG AA contrast (>= 4.5:1) via computeContrastRatio & auditAccessibility()", () => {
+  for (const [mode, p] of Object.entries(THEME_PALETTES)) {
+    const wcag = verifyThemeWcagContrast(mode);
+    assert.equal(wcag.ok, true, `${mode} theme contrast checks failed: ${JSON.stringify(wcag.checks)}`);
 
-  for (const [label, color, bg] of pairs) {
-    const res = auditAccessibility({
-      type: "Text",
-      props: { text: label },
-      styles: { base: { color, "background-color": bg } },
-    });
-    assert.equal(res.ok, true, `${label} failed WCAG AA: ${JSON.stringify(res.issues)}`);
+    const pairs = [
+      [`${mode} primary text`, p.text, p.bg],
+      [`${mode} surface text`, p.text, p.surface],
+      [`${mode} muted text`, p.muted, p.surface],
+      [`${mode} link text`, p.link, p.surface],
+      [`${mode} primary button`, p.btnFg, p.primary],
+      [`${mode} danger button`, p.btnFg, p.dangerBtn],
+      [`${mode} danger alert`, p.danger, p.dangerBg],
+      [`${mode} warn alert`, p.warn, p.warnBg],
+      [`${mode} pass alert`, p.pass, p.passBg],
+    ];
+    for (const [label, color, bg] of pairs) {
+      const ratio = computeContrastRatio(color, bg);
+      assert.ok(ratio >= 4.5, `${label} ratio ${ratio} < 4.5:1`);
+      const res = auditAccessibility({
+        type: "Text",
+        props: { text: label },
+        styles: { base: { color, "background-color": bg } },
+      });
+      assert.equal(res.ok, true, `${label} failed WCAG AA: ${JSON.stringify(res.issues)}`);
+    }
   }
 });

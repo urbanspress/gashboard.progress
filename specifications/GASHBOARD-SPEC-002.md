@@ -1,6 +1,6 @@
 # GASHBOARD-SPEC-002: Gashboard `v0.2.0` — Light/Dark Theme Switcher & Built-In phpMyAdmin-Style Visual Database Manager
 
-- **Status:** Specification in Review (Awaiting Project-Owner Approval — zero `v0.2.0` application code written)
+- **Status:** Complete (`v0.2.0` Implemented, Verified 100% Across All 4 Gates & Released)
 - **Milestone:** `v0.2.0` — Step 5 Visual Database Operations & Accessible Theme System
 - **Foundational Upstream & Peer Baselines:**
   - **GRAB:** `v1.1.0` (`urbanspress/grab` — `grab serve --allow-scripts`, `server.asset`, `use server`, `use data`, `use cache`, `use http`, `use json`, `use crypto` AES-256-GCM, `use env`, `ADR-005`, `ADR-017`, `ADR-025c`)
@@ -18,7 +18,7 @@
 ### Included in `v0.2.0`
 1. **WCAG AA Light/Dark Theme Switcher (`public/gashboard/theme.js`, `public/gashboard/gashboard.css`, `src/gashboard.grab`):**
    - Reactive **`Grex JS v1.0.0`** theme controller built with `createTheme` and verified by `computeContrastRatio()` (`>= 4.5:1` for normal text, `>= 3.0:1` for large text and UI borders across all Light and Dark semantic surfaces).
-   - Zero wrapper `<div>` elements (`divCount === 0`), zero `innerHTML` writes, intact `:focus-visible` keyboard focus rings in both themes, and **zero FOUC** (Flash of Unstyled Content) by applying the persisted `data-gashboard-theme` attribute from SQLite preferences (`GET /api/preferences/theme`) and local preference storage before first paint.
+   - Zero wrapper `<div>` elements (`divCount === 0`), zero `innerHTML` writes, intact `:focus-visible` keyboard focus rings in both themes, and **zero FOUC** (Flash of Unstyled Content) by applying the persisted `data-grex-theme` (`"light"` | `"dark"`) attribute from SQLite preferences (`GET /api/preferences/theme`) and local preference storage before first paint.
    - Accessible `<button>` toggle in the top `<header>`/`<nav>` bar with clear `aria-pressed` state and plain-English label (`"Switch to Dark Mode"` / `"Switch to Light Mode"`).
 
 2. **Built-In phpMyAdmin-Style Visual Database Manager (`public/gashboard/db-manager.js`, `src/gashboard.grab`, `bridge/internal/dbinspect/`):**
@@ -44,7 +44,7 @@
 ```text
 gashboard/
 ├── migrations/
-│   └── 002_theme_and_db_prefs.grab        # Persists UI theme preference & DB audit/snapshot history
+│   └── 002_db_manager_and_theme.grab      # Persists UI theme preference & DB audit/snapshot history
 ├── src/
 │   └── gashboard.grab                     # Adds /api/preferences/theme and /api/db/* routes
 ├── views/
@@ -89,13 +89,16 @@ gashboard/
 | `POST /api/db/query` | `X-CSRF-Token` | Read-only `SELECT`/`EXPLAIN` query runner (`query_only` / `READ ONLY` transaction enforced). |
 | `POST /api/db/mutate/plan` | `X-CSRF-Token` | Previews write/DDL/import statement, creates/verifies Pre-Mutation Snapshot, mints `approval_token`. |
 | `POST /api/db/mutate/execute` | `X-CSRF-Token` + single-use `approval_token` | Executes approved mutation/DDL/import (`403` invalid, `409` replay) and logs audit record. |
+| `POST /api/db/export` | `X-CSRF-Token` | Exports sanitized read-only SQL dump (`<= 100` rows per table chunk, `GRAB-E401` confinement). |
+| `GET /api/db/snapshots` | Loopback read-only | Lists recorded Pre-Mutation Snapshots and rollback verification state. |
+| `POST /api/db/snapshots/restore` | `X-CSRF-Token` + single-use `approval_token` | Executes 1-click atomic rollback to a Pre-Mutation Snapshot (`403` invalid, `409` replay). |
 
 ---
 
 ## 5. `v0.2.0` Acceptance & Verification Gates
 
 `Gashboard v0.2.0` is eligible for completion and synchronized `origin` + `stable` release **only** when **100%** of these gates pass:
-1. **`grab check` & Canonical `grab format` Parity:** Zero errors on `src/gashboard.grab`, `migrations/002_theme_and_db_prefs.grab`, and `views/dashboard.grab.html`, with byte-for-byte `grab format` parity.
+1. **`grab check` & Canonical `grab format` Parity:** Zero errors on `src/gashboard.grab`, `migrations/002_db_manager_and_theme.grab`, and `views/dashboard.grab.html`, with byte-for-byte `grab format` parity.
 2. **Pure `Grex JS v1.0.0`, Light/Dark WCAG AA & Zero-`<div>` Tests (`node --test tests/*.test.js`):**
    - `divCount === 0`, `innerHTMLWriteCount === 0`, and `100%` `auditAccessibility()` pass across Light and Dark modes (`computeContrastRatio() >= 4.5:1`).
    - Exact `ADR-025c` numeric string preservation (`"12345678901234567890.1234"` intact without float rounding), `limit <= 100` enforcement, and `403`/`409` mutation gate tests pass.

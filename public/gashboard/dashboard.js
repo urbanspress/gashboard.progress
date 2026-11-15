@@ -1,10 +1,10 @@
 /**
- * Gashboard v0.1.0 — Root Pure Grex JS v1.0.0 Control Panel Orchestrator.
- * Zero wrapper-<div> elements, zero innerHTML writes, 100% WCAG AA,
- * exact ADR-025c base-10 numeric wire strings, and strict known_hosts pinning.
+ * Gashboard v0.2.0 — Root Pure Grex JS v1.0.0 Control Panel Orchestrator.
+ * Zero wrapper-<div> elements, zero innerHTML writes, 100% WCAG AA Light/Dark,
+ * exact ADR-025c base-10 numeric wire strings, strict known_hosts pinning & DB Manager.
  */
 
-export const GASHBOARD_VERSION = "0.1.0";
+export const GASHBOARD_VERSION = "0.2.0";
 
 import {
   auditAccessibility,
@@ -21,6 +21,8 @@ import {
 import { createMarketplacePanel } from "./marketplace.js";
 import { createTunnelsPanel } from "./tunnels.js";
 import { createFleetDnaPanel } from "./fleet-dna.js";
+import { createDbManagerPanel } from "./db-manager.js";
+import { initThemeController, THEME_PALETTES, verifyThemeWcagContrast } from "./theme.js";
 
 export const SAMPLE_VPS_NODES = Object.freeze([
   {
@@ -92,6 +94,12 @@ export function mountGashboardDashboard({
     }
   }
   const api = createApiClient({ csrfToken: resolvedCsrf, fetchImpl });
+  const themeController = initThemeController({
+    doc,
+    win: globalThis.window,
+    api,
+    rootElement: doc.documentElement || root,
+  });
 
   const nodesSignal = signal([...initialNodes]);
   const vpsStatusMsg = signal("");
@@ -350,11 +358,14 @@ export function mountGashboardDashboard({
 
   const loadLiveFleet = async () => {
     try {
-      const [vpsRes, catRes, tunRes, snapRes] = await Promise.all([
+      const [vpsRes, catRes, tunRes, snapRes, dbTargetsRes, dbSnapsRes, themeRes] = await Promise.all([
         api.get("/api/vps"),
         api.get("/api/marketplace/catalog"),
         api.get("/api/tunnels"),
         api.get("/api/fleet/snapshots"),
+        api.get("/api/db/targets").catch(() => null),
+        api.get("/api/db/snapshots").catch(() => null),
+        api.get("/api/preferences/theme").catch(() => null),
       ]);
       if (Array.isArray(vpsRes.nodes) && vpsRes.nodes.length > 0) {
         const chk = assertExactWireNumbers(vpsRes.nodes);
@@ -371,6 +382,15 @@ export function mountGashboardDashboard({
       }
       if (Array.isArray(snapRes.snapshots)) {
         fleetDnaPanel.setSnapshots(snapRes.snapshots);
+      }
+      if (dbTargetsRes && Array.isArray(dbTargetsRes.targets)) {
+        dbManagerPanel.setTargets(dbTargetsRes.targets);
+      }
+      if (dbSnapsRes && Array.isArray(dbSnapsRes.snapshots)) {
+        dbManagerPanel.setSnapshots(dbSnapsRes.snapshots);
+      }
+      if (themeRes && themeRes.theme && themeRes.theme !== themeController.getTheme()) {
+        await themeController.setTheme(themeRes.theme);
       }
       return true;
     } catch {
@@ -395,12 +415,14 @@ export function mountGashboardDashboard({
   });
   tunnelsPanel = createTunnelsPanel({ doc, api, nodesSignal });
   fleetDnaPanel = createFleetDnaPanel({ doc, api, nodesSignal });
+  const dbManagerPanel = createDbManagerPanel({ doc, api });
 
   root.appendChild(heroSection);
   root.appendChild(vpsSection);
   root.appendChild(marketplacePanel.element);
   root.appendChild(tunnelsPanel.element);
   root.appendChild(fleetDnaPanel.element);
+  root.appendChild(dbManagerPanel.element);
 
   renderVpsTable();
   refreshAllNodeSelectors();
@@ -409,23 +431,33 @@ export function mountGashboardDashboard({
     registerVps,
     probeNode,
     loadLiveFleet,
+    theme: themeController,
     marketplace: marketplacePanel,
     tunnels: tunnelsPanel,
     fleetDna: fleetDnaPanel,
+    dbManager: dbManagerPanel,
     getNodes: () => nodesSignal.get(),
     auditDomSafety() {
       const divs = typeof root.querySelectorAll === "function" ? root.querySelectorAll("div") : [];
       const a11y = auditDom(root);
-      const schemaA11y = auditAccessibility({
+      const lightSchemaA11y = auditAccessibility({
         type: "Section",
-        props: { label: "Gashboard Control Panel" },
-        styles: { base: { color: "#0f172a", "background-color": "#ffffff" } },
+        props: { label: "Gashboard Control Panel Light" },
+        styles: { base: { color: THEME_PALETTES.light.text, "background-color": THEME_PALETTES.light.surface } },
       });
+      const darkSchemaA11y = auditAccessibility({
+        type: "Section",
+        props: { label: "Gashboard Control Panel Dark" },
+        styles: { base: { color: THEME_PALETTES.dark.text, "background-color": THEME_PALETTES.dark.surface } },
+      });
+      const lightContrast = verifyThemeWcagContrast("light");
+      const darkContrast = verifyThemeWcagContrast("dark");
       return {
         divCount: divs.length,
         innerHTMLWriteCount: doc.innerHTMLWriteCount || 0,
-        a11yOk: a11y.ok && schemaA11y.ok,
-        a11yIssues: [...a11y.issues, ...schemaA11y.issues],
+        a11yOk: a11y.ok && lightSchemaA11y.ok && darkSchemaA11y.ok && lightContrast.ok && darkContrast.ok,
+        a11yIssues: [...a11y.issues, ...lightSchemaA11y.issues, ...darkSchemaA11y.issues],
+        contrast: { light: lightContrast, dark: darkContrast },
       };
     },
   };

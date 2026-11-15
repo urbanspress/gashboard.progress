@@ -1,9 +1,9 @@
 /**
- * Gashboard v0.1.0 — Exact-Decimal Wire & CSRF-Aware API Client (ADR-025c).
+ * Gashboard v0.2.0 — Exact-Decimal Wire & CSRF-Aware API Client (ADR-025c).
  * Preserves base-10 GrabDecimal/GrabInteger strings without IEEE-754 float coercion.
  */
 
-export const GASHBOARD_VERSION = "0.1.0";
+export const GASHBOARD_VERSION = "0.2.0";
 
 const EXACT_DECIMAL_RE = /^-?\d+(?:\.\d+)?$/;
 const FLOAT_DRIFT_RE = /(?:0{5,}|9{5,})\d$/;
@@ -41,6 +41,14 @@ export function assertExactWireNumbers(
     "ttl_minutes",
     "price",
     "amount",
+    "amount_exact",
+    "page",
+    "limit",
+    "total_rows",
+    "total_pages",
+    "row_count",
+    "affected_rows",
+    "pre_row_count",
   ])
 ) {
   const invalidKeys = [];
@@ -72,6 +80,20 @@ export function assertExactWireNumbers(
  */
 export function isValidSshFingerprint(fp) {
   return /^SHA256:[A-Za-z0-9+/]{16,64}={0,2}$/.test(String(fp || "").trim());
+}
+
+/**
+ * Validate ADR-025c integer pagination wire strings (1 <= limit <= 100).
+ * @param {unknown} page
+ * @param {unknown} limit
+ * @returns {boolean}
+ */
+export function isValidPaginationStrings(page, limit) {
+  if (!isExactDecimalString(page) || !isExactDecimalString(limit)) return false;
+  if (String(page).includes(".") || String(limit).includes(".")) return false;
+  const p = Number.parseInt(String(page), 10);
+  const l = Number.parseInt(String(limit), 10);
+  return Number.isSafeInteger(p) && p >= 1 && Number.isSafeInteger(l) && l >= 1 && l <= 100;
 }
 
 /**

@@ -11,11 +11,12 @@ use server
 use text
 
 # ==============================================================================
-# Gashboard v0.1.0 — Discreet 127.0.0.1 Multi-VPS Control Plane & Fleet Deployer
+# Gashboard v0.2.0 — Discreet 127.0.0.1 Multi-VPS Control Panel, Fleet Deployer
+# & Built-In phpMyAdmin-Style Visual Database Manager
 # Built cleanly on GRAB v1.1.0, Grex JS v1.0.0, grabman v0.1.0 & grabtaculous.
 # ==============================================================================
 
-set gash_version to "0.1.0"
+set gash_version to "0.2.0"
 set gash_cache to cache.open using "gashboard"
 set db to data.open using "main"
 
@@ -37,6 +38,18 @@ set stmt_list_snapshots to data.prepare using db, "SELECT id, node_id, dna_diges
 set stmt_get_snapshot to data.prepare using db, "SELECT id, node_id, dna_digest, lock_digest, snapshot_id, status, ready_status, created_at FROM site_dna_deployments WHERE snapshot_id = :snapshot_id", record {params: record {snapshot_id: "text"}, columns: record {id: "text", node_id: "text", dna_digest: "text", lock_digest: "text", snapshot_id: "text", status: "text", ready_status: "text", created_at: "text"}}
 set stmt_insert_deployment to data.prepare using db, "INSERT INTO site_dna_deployments (id, node_id, dna_digest, lock_digest, snapshot_id, status, ready_status, created_at) VALUES (:id, :node_id, :dna_digest, :lock_digest, :snapshot_id, :status, :ready_status, :created_at)", record {params: record {id: "text", node_id: "text", dna_digest: "text", lock_digest: "text", snapshot_id: "text", status: "text", ready_status: "text", created_at: "text"}, columns: record {}}
 set stmt_update_deployment_status to data.prepare using db, "UPDATE site_dna_deployments SET status = :status, ready_status = :ready_status WHERE snapshot_id = :snapshot_id", record {params: record {status: "text", ready_status: "text", snapshot_id: "text"}, columns: record {}}
+
+set stmt_get_pref to data.prepare using db, "SELECT pref_key, pref_value, updated_at FROM ui_preferences WHERE pref_key = :pref_key", record {params: record {pref_key: "text"}, columns: record {pref_key: "text", pref_value: "text", updated_at: "text"}}
+set stmt_insert_pref to data.prepare using db, "INSERT INTO ui_preferences (pref_key, pref_value, updated_at) VALUES (:pref_key, :pref_value, :updated_at)", record {params: record {pref_key: "text", pref_value: "text", updated_at: "text"}, columns: record {}}
+set stmt_update_pref to data.prepare using db, "UPDATE ui_preferences SET pref_value = :pref_value, updated_at = :updated_at WHERE pref_key = :pref_key", record {params: record {pref_value: "text", updated_at: "text", pref_key: "text"}, columns: record {}}
+
+set stmt_list_db_snapshots to data.prepare using db, "SELECT id, target_id, target_kind, table_name, statement_preview, snapshot_path, backup_sha256, status, created_at, restored_at FROM db_mutation_snapshots ORDER BY created_at DESC, id DESC", record {params: record {}, columns: record {id: "text", target_id: "text", target_kind: "text", table_name: "text", statement_preview: "text", snapshot_path: "text", backup_sha256: "text", status: "text", created_at: "text", restored_at: "text"}}
+set stmt_get_db_snapshot to data.prepare using db, "SELECT id, target_id, target_kind, table_name, statement_preview, snapshot_path, backup_sha256, approval_token_hash, status, created_at, restored_at FROM db_mutation_snapshots WHERE id = :id", record {params: record {id: "text"}, columns: record {id: "text", target_id: "text", target_kind: "text", table_name: "text", statement_preview: "text", snapshot_path: "text", backup_sha256: "text", approval_token_hash: "text", status: "text", created_at: "text", restored_at: "text"}}
+set stmt_insert_db_snapshot to data.prepare using db, "INSERT INTO db_mutation_snapshots (id, target_id, target_kind, table_name, statement_preview, snapshot_path, backup_sha256, approval_token_hash, status, created_at, restored_at) VALUES (:id, :target_id, :target_kind, :table_name, :statement_preview, :snapshot_path, :backup_sha256, :approval_token_hash, :status, :created_at, :restored_at)", record {params: record {id: "text", target_id: "text", target_kind: "text", table_name: "text", statement_preview: "text", snapshot_path: "text", backup_sha256: "text", approval_token_hash: "text", status: "text", created_at: "text", restored_at: "text"}, columns: record {}}
+set stmt_mark_db_snapshot to data.prepare using db, "UPDATE db_mutation_snapshots SET status = :status, restored_at = :restored_at WHERE id = :id", record {params: record {status: "text", restored_at: "text", id: "text"}, columns: record {}}
+
+set stmt_insert_db_audit to data.prepare using db, "INSERT INTO db_audit_logs (id, target_id, operation_kind, sql_preview, row_count, snapshot_id, status, created_at) VALUES (:id, :target_id, :operation_kind, :sql_preview, :row_count, :snapshot_id, :status, :created_at)", record {params: record {id: "text", target_id: "text", operation_kind: "text", sql_preview: "text", row_count: "text", snapshot_id: "text", status: "text", created_at: "text"}, columns: record {}}
+set stmt_list_db_audits to data.prepare using db, "SELECT id, target_id, operation_kind, sql_preview, row_count, snapshot_id, status, created_at FROM db_audit_logs ORDER BY created_at DESC, id DESC", record {params: record {}, columns: record {id: "text", target_id: "text", operation_kind: "text", sql_preview: "text", row_count: "text", snapshot_id: "text", status: "text", created_at: "text"}}
 
 # ==============================================================================
 # Helpers: Cache, Env, Security, ADR-025c Validation, Host-Key Pinning & Bridge
@@ -322,7 +335,7 @@ make list_blueprints using v_tag
 end
 
 make find_blueprint using bp_id
-  set all_bps to list_blueprints using "0.1.0"
+  set all_bps to list_blueprints using "0.2.0"
   for each bp in all_bps
     if bp.id is bp_id
       give back bp
@@ -345,6 +358,198 @@ make enrich_snapshots_for_ui using c, raw_rows
     set out to collections.append using out, item
   end
   give back out
+end
+
+make get_active_theme using s_get_pref
+  try
+    set row to data.one using s_get_pref, record {pref_key: "theme"}
+    if row is not nothing
+      if row.pref_value is "dark"
+        give back "dark"
+      end
+    end
+  catch err
+    set ignored_err to err.message
+  end
+  give back "light"
+end
+
+make theme_wcag_metadata using mode_name
+  if mode_name is "dark"
+    give back record {mode: "dark", attribute: "data-grex-theme", standard: "WCAG-AA", min_normal_contrast: "4.5", tokens: record {bg: "#0b1120", surface: "#111827", text: "#f8fafc", muted: "#cbd5e1", accent: "#34d399", danger: "#f87171", border: "#475569", focus_ring: "#6ee7b7"}}
+  end
+  give back record {mode: "light", attribute: "data-grex-theme", standard: "WCAG-AA", min_normal_contrast: "4.5", tokens: record {bg: "#f8fafc", surface: "#ffffff", text: "#0f172a", muted: "#334155", accent: "#047857", danger: "#b91c1c", border: "#64748b", focus_ring: "#065f46"}}
+end
+
+make query_get_str using req, key, fallback
+  if req is nothing or req.query is nothing
+    give back fallback
+  end
+  if not (has_map_key using req.query, key)
+    give back fallback
+  end
+  set vals to req.query at key
+  if vals is nothing
+    give back fallback
+  end
+  if is_list_value using vals
+    try
+      give back text.trim using (text.from using (vals at 0))
+    catch err
+      give back fallback
+    end
+  end
+  give back text.trim using (text.from using vals)
+end
+
+make is_safe_sqlite_relpath using raw_p
+  set p to text.trim using raw_p
+  if p is ""
+    give back no
+  end
+  set sl to text.replace using p, "\\", "/"
+  if (text.starts_with using sl, "/") or (text.starts_with using sl, "//")
+    give back no
+  end
+  if (text.contains using sl, ":") or (text.contains using sl, "..")
+    give back no
+  end
+  set low to text.lower using sl
+  set valid_ext to (text.ends_with using low, ".db") or (text.ends_with using low, ".sqlite") or (text.ends_with using low, ".sqlite3")
+  if not valid_ext
+    give back no
+  end
+  set segs to text.split using low, "/"
+  for each seg in segs
+    if seg is ".." or seg is ".git" or seg is ".ssh" or seg is ".gnupg" or seg is "id_rsa" or seg is "id_ed25519" or seg is "known_hosts" or seg is "authorized_keys" or seg is "secrets" or (text.starts_with using seg, ".env")
+      give back no
+    end
+  end
+  give back yes
+end
+
+make extract_target_map using payload
+  if (has_map_key using payload, "target") and (is_record_value using (payload at "target"))
+    give back payload at "target"
+  end
+  give back payload
+end
+
+make resolve_and_validate_db_target using target_map, s_get_tun
+  set direct_host to text.trim using (map_get_str using target_map, "host", "")
+  if direct_host is not ""
+    give back record {ok: no, status: 422, code: "GASH-E422", error: "Direct public database host connections are blocked (ADR-005); use an active 127.0.0.1 SSH tunnel or confined local SQLite.", target: {}}
+  end
+  set eng to text.lower using (text.trim using (map_get_str using target_map, "engine", ""))
+  set sq_path to text.trim using (map_get_str using target_map, "sqlite_path", "")
+  set tun_id to text.trim using (map_get_str using target_map, "tunnel_id", "")
+  set target_id to text.trim using (map_get_str using target_map, "target_id", "")
+
+  if eng is ""
+    if tun_id is not ""
+      set tun_lookup to data.one using s_get_tun, record {id: tun_id}
+      if tun_lookup is not nothing
+        set eng to text.lower using tun_lookup.engine
+      end
+    otherwise
+      set eng to "sqlite"
+    end
+  end
+  if eng is "postgresql"
+    set eng to "postgres"
+  end
+  if eng is "mysql"
+    set eng to "mariadb"
+  end
+  if eng is "sqlite3"
+    set eng to "sqlite"
+  end
+
+  if eng is "sqlite"
+    if sq_path is "" and (target_id is "" or target_id is "sqlite:gashboard.db")
+      set sq_path to "gashboard.db"
+    end
+    if not (is_safe_sqlite_relpath using sq_path)
+      give back record {ok: no, status: 403, code: "GRAB-E401", error: "SQLite path failed workspace confinement check (GRAB-E401).", target: {}}
+    end
+    set out_id to target_id
+    if out_id is ""
+      set out_id to "sqlite:" joined with sq_path
+    end
+    give back record {ok: yes, status: 200, code: "", error: "", target: {"target_id": out_id, "engine": "sqlite", "sqlite_path": sq_path}}
+  end
+
+  if eng is "postgres" or eng is "mariadb"
+    if tun_id is ""
+      give back record {ok: no, status: 422, code: "GASH-E422", error: "tunnel_id is required for PostgreSQL/MariaDB inspection (zero public DB admin ports).", target: {}}
+    end
+    set tun_row to data.one using s_get_tun, record {id: tun_id}
+    if tun_row is not nothing
+      if tun_row.status is not "active"
+        give back record {ok: no, status: 422, code: "GASH-E422", error: ("SSH tunnel " joined with tun_id joined with " is closed."), target: {}}
+      end
+      if tun_row.local_host is not "127.0.0.1"
+        give back record {ok: no, status: 403, code: "GASH-E501", error: "SSH tunnel bind address must strictly remain 127.0.0.1.", target: {}}
+      end
+    end
+    set out_id to target_id
+    if out_id is ""
+      set out_id to "tun:" joined with tun_id
+    end
+    set db_user to text.trim using (map_get_str using target_map, "db_user", "")
+    set db_pass to map_get_str using target_map, "db_password", ""
+    set db_name to text.trim using (map_get_str using target_map, "db_name", "")
+    set schema_name to text.trim using (map_get_str using target_map, "schema_name", "")
+    give back record {ok: yes, status: 200, code: "", error: "", target: {"target_id": out_id, "engine": eng, "tunnel_id": tun_id, "db_user": db_user, "db_password": db_pass, "db_name": db_name, "schema_name": schema_name}}
+  end
+
+  give back record {ok: no, status: 422, code: "GASH-E422", error: ("Unsupported database engine: " joined with eng), target: {}}
+end
+
+make enrich_db_snapshots_for_ui using c, raw_rows
+  set out to []
+  for each row in raw_rows
+    set item to copy_to_map using row
+    set cached_tok to cache_get_opt using c, ("db_rb:" joined with row.id)
+    if cached_tok is not nothing
+      set apprv to cache_get_opt using c, ("apprv:" joined with cached_tok)
+      if apprv is not nothing and (not apprv.used)
+        set item to collections.put using item, "restore_approval_token", cached_tok
+      end
+    end
+    set out to collections.append using out, item
+  end
+  give back out
+end
+
+make list_db_targets_for_ui using s_list_tunnels
+  set items to []
+  set sq_item to record {target_id: "sqlite:gashboard.db", label: "Confined Workspace SQLite (gashboard.db)", engine: "sqlite", sqlite_path: "gashboard.db", transport: "local-confined", read_only_default: yes}
+  set items to collections.append using items, sq_item
+  set tuns to data.query using s_list_tunnels, record {}
+  for each t in tuns
+    set e to text.lower using t.engine
+    if e is "postgres" or e is "postgresql" or e is "mariadb" or e is "mysql"
+      set canon_e to e
+      if canon_e is "postgresql"
+        set canon_e to "postgres"
+      end
+      if canon_e is "mysql"
+        set canon_e to "mariadb"
+      end
+      set lbl to canon_e joined with " via 127.0.0.1:" joined with t.local_port joined with " (" joined with t.id joined with ")"
+      set ti to record {target_id: ("tun:" joined with t.id), label: lbl, engine: canon_e, tunnel_id: t.id, node_id: t.node_id, bind_host: t.local_host, local_port: t.local_port, transport: "127.0.0.1-ssh-tunnel", read_only_default: yes}
+      set items to collections.append using items, ti
+    end
+  end
+  give back items
+end
+
+make bridge_error_status using bridge_res, fallback_status
+  if bridge_res.status is greater than 0
+    give back bridge_res.status
+  end
+  give back fallback_status
 end
 
 make seed_default_vps_nodes using s_count, s_insert
@@ -383,14 +588,16 @@ route "GET" "/"
   set csrf to get_or_create_csrf using gash_cache
   set css_url to safe_asset_url using "/static/gashboard/gashboard.css"
   set js_url to safe_asset_url using "/static/gashboard/dashboard.js"
-  give back server.html using "../views/dashboard.grab.html", record {csrf_token: csrf, gashboard_css_url: css_url, dashboard_js_url: js_url}
+  set active_theme to get_active_theme using stmt_get_pref
+  give back server.html using "../views/dashboard.grab.html", record {csrf_token: csrf, gashboard_css_url: css_url, dashboard_js_url: js_url, initial_theme: active_theme}
 end
 
 route "GET" "/gashboard"
   set csrf to get_or_create_csrf using gash_cache
   set css_url to safe_asset_url using "/static/gashboard/gashboard.css"
   set js_url to safe_asset_url using "/static/gashboard/dashboard.js"
-  give back server.html using "../views/dashboard.grab.html", record {csrf_token: csrf, gashboard_css_url: css_url, dashboard_js_url: js_url}
+  set active_theme to get_active_theme using stmt_get_pref
+  give back server.html using "../views/dashboard.grab.html", record {csrf_token: csrf, gashboard_css_url: css_url, dashboard_js_url: js_url, initial_theme: active_theme}
 end
 
 # ==============================================================================
@@ -856,6 +1063,340 @@ route "POST" "/api/fleet/rollback" using req
     set snaps_out to enrich_snapshots_for_ui using gash_cache, raw_snaps
 
     give back server.json using 200, record {ok: yes, rollback: record {snapshot_id: snap_id, node_id: snap_row.node_id, status: "rolled_back", ready_status: "200"}, snapshots: snaps_out}
+  catch err
+    give back server.json using 400, record {ok: no, error: err.message}
+  end
+end
+
+# ==============================================================================
+# v0.2.0: WCAG AA Light/Dark Theme Preference Routes
+# ==============================================================================
+
+route "GET" "/api/preferences/theme"
+  set active_theme to get_active_theme using stmt_get_pref
+  set meta to theme_wcag_metadata using active_theme
+  give back server.json using 200, record {ok: yes, theme: active_theme, wcag_aa: meta}
+end
+
+route "POST" "/api/preferences/theme" using req
+  if not (verify_csrf using gash_cache, req)
+    give back server.json using 403, record {ok: no, code: "GASH-E403", error: "Invalid or missing X-CSRF-Token"}
+  end
+  try
+    set payload to server.parse_json using req
+    set requested to text.lower using (text.trim using (map_get_str using payload, "theme", ""))
+    if (requested is not "light") and (requested is not "dark")
+      give back server.json using 422, record {ok: no, code: "GASH-E422", error: "theme must be \"light\" or \"dark\""}
+    end
+    set now_r to call dates.now_utc
+    set existing_pref to data.one using stmt_get_pref, record {pref_key: "theme"}
+    if existing_pref is not nothing
+      call data.execute using stmt_update_pref, record {pref_value: requested, updated_at: now_r.iso, pref_key: "theme"}
+    otherwise
+      call data.execute using stmt_insert_pref, record {pref_key: "theme", pref_value: requested, updated_at: now_r.iso}
+    end
+    set meta to theme_wcag_metadata using requested
+    give back server.json using 200, record {ok: yes, theme: requested, wcag_aa: meta}
+  catch err
+    give back server.json using 400, record {ok: no, error: err.message}
+  end
+end
+
+# ==============================================================================
+# v0.2.0: Built-In phpMyAdmin-Style Visual Database Manager Routes
+# ==============================================================================
+
+route "GET" "/api/db/targets"
+  set targets to list_db_targets_for_ui using stmt_list_active_tunnels
+  give back server.json using 200, record {ok: yes, targets: targets}
+end
+
+route "GET" "/api/db/schema" using req
+  set tmap to {"target_id": (query_get_str using req, "target_id", ""), "engine": (query_get_str using req, "engine", ""), "sqlite_path": (query_get_str using req, "sqlite_path", ""), "tunnel_id": (query_get_str using req, "tunnel_id", ""), "host": (query_get_str using req, "host", ""), "db_user": (query_get_str using req, "db_user", ""), "db_name": (query_get_str using req, "db_name", ""), "schema_name": (query_get_str using req, "schema_name", "")}
+  set tv to resolve_and_validate_db_target using tmap, stmt_get_tunnel
+  if not tv.ok
+    give back server.json using tv.status, record {ok: no, code: tv.code, error: tv.error}
+  end
+  set br to bridge_post using "/v1/db/schema", tv.target
+  if not br.configured
+    give back server.json using 503, record {ok: no, code: "GASH-E503", error: "gashboard-bridge is not configured for DB inspection"}
+  end
+  if not br.ok
+    set st_code to bridge_error_status using br, 502
+    give back server.json using st_code, record {ok: no, code: br.code, error: br.error}
+  end
+  give back server.json using 200, br.data
+end
+
+route "POST" "/api/db/schema" using req
+  if not (verify_csrf using gash_cache, req)
+    give back server.json using 403, record {ok: no, code: "GASH-E403", error: "Invalid or missing X-CSRF-Token"}
+  end
+  try
+    set payload to server.parse_json using req
+    set tmap to extract_target_map using payload
+    set tv to resolve_and_validate_db_target using tmap, stmt_get_tunnel
+    if not tv.ok
+      give back server.json using tv.status, record {ok: no, code: tv.code, error: tv.error}
+    end
+    set br to bridge_post using "/v1/db/schema", tv.target
+    if not br.configured
+      give back server.json using 503, record {ok: no, code: "GASH-E503", error: "gashboard-bridge is not configured for DB inspection"}
+    end
+    if not br.ok
+      set st_code to bridge_error_status using br, 502
+      give back server.json using st_code, record {ok: no, code: br.code, error: br.error}
+    end
+    give back server.json using 200, br.data
+  catch err
+    give back server.json using 400, record {ok: no, error: err.message}
+  end
+end
+
+route "POST" "/api/db/rows" using req
+  if not (verify_csrf using gash_cache, req)
+    give back server.json using 403, record {ok: no, code: "GASH-E403", error: "Invalid or missing X-CSRF-Token"}
+  end
+  try
+    set payload to server.parse_json using req
+    set tmap to extract_target_map using payload
+    set tv to resolve_and_validate_db_target using tmap, stmt_get_tunnel
+    if not tv.ok
+      give back server.json using tv.status, record {ok: no, code: tv.code, error: tv.error}
+    end
+    set wire_check to validate_wire_fields using payload, ["page", "limit"]
+    if not wire_check.ok
+      give back server.json using 422, record {ok: no, code: "GASH-E422", error: ("ADR-025c violation: field \"" joined with wire_check.field joined with "\" must be an exact base-10 wire string.")}
+    end
+    set table_name to text.trim using (map_get_str using payload, "table", "")
+    set page_str to text.trim using (map_get_str using payload, "page", "1")
+    set limit_str to text.trim using (map_get_str using payload, "limit", "25")
+    if (text.contains using page_str, ".") or (text.contains using limit_str, ".")
+      give back server.json using 422, record {ok: no, code: "GASH-E422", error: "page and limit must be integer wire strings"}
+    end
+    set p_int to text.to_integer using page_str
+    set l_int to text.to_integer using limit_str
+    if p_int is less than 1 or l_int is less than 1 or l_int is greater than 100
+      give back server.json using 422, record {ok: no, code: "GASH-E422", error: "Pagination bounds require page >= 1 and 1 <= limit <= 100"}
+    end
+    set sort_col to text.trim using (map_get_str using payload, "sort_col", "")
+    set sort_dir to text.trim using (map_get_str using payload, "sort_dir", "ASC")
+    set filter_col to text.trim using (map_get_str using payload, "filter_col", "")
+    set filter_op to text.trim using (map_get_str using payload, "filter_op", "contains")
+    set filter_val to map_get_str using payload, "filter_val", ""
+    set br to bridge_post using "/v1/db/rows", {"target": tv.target, "table": table_name, "page": page_str, "limit": limit_str, "sort_col": sort_col, "sort_dir": sort_dir, "filter_col": filter_col, "filter_op": filter_op, "filter_val": filter_val}
+    if not br.configured
+      give back server.json using 503, record {ok: no, code: "GASH-E503", error: "gashboard-bridge is not configured"}
+    end
+    if not br.ok
+      set st_code to bridge_error_status using br, 422
+      give back server.json using st_code, record {ok: no, code: br.code, error: br.error}
+    end
+    give back server.json using 200, br.data
+  catch err
+    give back server.json using 400, record {ok: no, error: err.message}
+  end
+end
+
+route "POST" "/api/db/query" using req
+  if not (verify_csrf using gash_cache, req)
+    give back server.json using 403, record {ok: no, code: "GASH-E403", error: "Invalid or missing X-CSRF-Token"}
+  end
+  try
+    set payload to server.parse_json using req
+    set tmap to extract_target_map using payload
+    set tv to resolve_and_validate_db_target using tmap, stmt_get_tunnel
+    if not tv.ok
+      give back server.json using tv.status, record {ok: no, code: tv.code, error: tv.error}
+    end
+    set sql_text to text.trim using (map_get_str using payload, "sql", "")
+    if sql_text is ""
+      give back server.json using 422, record {ok: no, code: "GASH-E422", error: "sql query text is required"}
+    end
+    set br to bridge_post using "/v1/db/query", {"target": tv.target, "sql": sql_text}
+    if not br.configured
+      give back server.json using 503, record {ok: no, code: "GASH-E503", error: "gashboard-bridge is not configured"}
+    end
+    if not br.ok
+      set st_code to bridge_error_status using br, 403
+      give back server.json using st_code, record {ok: no, code: br.code, error: br.error}
+    end
+    give back server.json using 200, br.data
+  catch err
+    give back server.json using 400, record {ok: no, error: err.message}
+  end
+end
+
+route "POST" "/api/db/mutate/plan" using req
+  if not (verify_csrf using gash_cache, req)
+    give back server.json using 403, record {ok: no, code: "GASH-E403", error: "Invalid or missing X-CSRF-Token"}
+  end
+  try
+    set payload to server.parse_json using req
+    set tmap to extract_target_map using payload
+    set tv to resolve_and_validate_db_target using tmap, stmt_get_tunnel
+    if not tv.ok
+      give back server.json using tv.status, record {ok: no, code: tv.code, error: tv.error}
+    end
+    set sql_text to text.trim using (map_get_str using payload, "sql", "")
+    if sql_text is ""
+      give back server.json using 422, record {ok: no, code: "GASH-E422", error: "sql mutation or DDL text is required"}
+    end
+    set br to bridge_post using "/v1/db/mutate/plan", {"target": tv.target, "sql": sql_text}
+    if not br.configured
+      give back server.json using 503, record {ok: no, code: "GASH-E503", error: "gashboard-bridge is not configured"}
+    end
+    if not br.ok
+      set st_code to bridge_error_status using br, 422
+      give back server.json using st_code, record {ok: no, code: br.code, error: br.error}
+    end
+
+    set snap_id to map_get_str using br.data, "snapshot_id", ""
+    set target_id to map_get_str using tv.target, "target_id", "sqlite:gashboard.db"
+    set eng to map_get_str using tv.target, "engine", "sqlite"
+    set tbl_name to map_get_str using br.data, "table_name", ""
+    set snap_path to map_get_str using br.data, "snapshot_path", ""
+    set sha to map_get_str using br.data, "backup_sha256", ""
+    set kind_txt to map_get_str using br.data, "kind", "dml"
+    set verb_txt to map_get_str using br.data, "verb", "MUTATE"
+    set summary_txt to map_get_str using br.data, "plain_summary", ""
+    set pre_rows to map_get_str using br.data, "pre_row_count", "0"
+    set stmt_cnt to map_get_str using br.data, "statement_count", "1"
+
+    set plan_rec to record {snapshot_id: snap_id, target_id: target_id, target: tv.target, sql: sql_text, kind: kind_txt, table_name: tbl_name, backup_sha256: sha}
+    set tok to mint_approval using gash_cache, "db_mutate", plan_rec
+    set tok_hash to crypto.sha256_hex using tok
+    set now_r to call dates.now_utc
+
+    call data.execute using stmt_insert_db_snapshot, record {id: snap_id, target_id: target_id, target_kind: eng, table_name: tbl_name, statement_preview: summary_txt, snapshot_path: snap_path, backup_sha256: sha, approval_token_hash: tok_hash, status: "planned", created_at: now_r.iso, restored_at: ""}
+
+    give back server.json using 200, record {ok: yes, snapshot_id: snap_id, target_id: target_id, engine: eng, kind: kind_txt, verb: verb_txt, table_name: tbl_name, statement_count: stmt_cnt, pre_row_count: pre_rows, plain_summary: summary_txt, snapshot_path: snap_path, backup_sha256: sha, approval_token: tok}
+  catch err
+    give back server.json using 400, record {ok: no, error: err.message}
+  end
+end
+
+route "POST" "/api/db/mutate/execute" using req
+  if not (verify_csrf using gash_cache, req)
+    give back server.json using 403, record {ok: no, code: "GASH-E403", error: "Invalid or missing X-CSRF-Token"}
+  end
+  try
+    set payload to server.parse_json using req
+    set tok to map_get_str using payload, "approval_token", ""
+    set chk to consume_approval using gash_cache, tok, "db_mutate"
+    if not chk.ok
+      give back server.json using chk.status, record {ok: no, code: chk.code, error: chk.error}
+    end
+    set plan to chk.payload
+    set br to bridge_post using "/v1/db/mutate/execute", {"target": plan.target, "sql": plan.sql, "snapshot_id": plan.snapshot_id}
+    if not br.configured
+      give back server.json using 503, record {ok: no, code: "GASH-E503", error: "gashboard-bridge is not configured"}
+    end
+    set now_r to call dates.now_utc
+    set audit_id to "dbaud_" joined with (crypto.random_hex using 16)
+    if not br.ok
+      call data.execute using stmt_insert_db_audit, record {id: audit_id, target_id: plan.target_id, operation_kind: plan.kind, sql_preview: plan.sql, row_count: "0", snapshot_id: plan.snapshot_id, status: "failed_rolled_back", created_at: now_r.iso}
+      set st_code to bridge_error_status using br, 422
+      give back server.json using st_code, record {ok: no, code: br.code, error: br.error}
+    end
+
+    set affected to map_get_str using br.data, "affected_rows", "0"
+    call data.execute using stmt_mark_db_snapshot, record {status: "executed", restored_at: "", id: plan.snapshot_id}
+    call data.execute using stmt_insert_db_audit, record {id: audit_id, target_id: plan.target_id, operation_kind: plan.kind, sql_preview: plan.sql, row_count: affected, snapshot_id: plan.snapshot_id, status: "executed", created_at: now_r.iso}
+
+    set rb_tok to mint_approval using gash_cache, "db_restore", record {snapshot_id: plan.snapshot_id, target_id: plan.target_id, target: plan.target, backup_sha256: plan.backup_sha256}
+    call cache.set using gash_cache, ("db_rb:" joined with plan.snapshot_id), rb_tok, 3600000
+
+    set raw_snaps to data.query using stmt_list_db_snapshots, record {}
+    set snaps_out to enrich_db_snapshots_for_ui using gash_cache, raw_snaps
+    set audits_out to data.query using stmt_list_db_audits, record {}
+
+    give back server.json using 200, record {ok: yes, execution: br.data, snapshot_id: plan.snapshot_id, restore_approval_token: rb_tok, snapshots: snaps_out, audits: audits_out}
+  catch err
+    give back server.json using 400, record {ok: no, error: err.message}
+  end
+end
+
+route "POST" "/api/db/export" using req
+  if not (verify_csrf using gash_cache, req)
+    give back server.json using 403, record {ok: no, code: "GASH-E403", error: "Invalid or missing X-CSRF-Token"}
+  end
+  try
+    set payload to server.parse_json using req
+    set tmap to extract_target_map using payload
+    set tv to resolve_and_validate_db_target using tmap, stmt_get_tunnel
+    if not tv.ok
+      give back server.json using tv.status, record {ok: no, code: tv.code, error: tv.error}
+    end
+    set table_name to text.trim using (map_get_str using payload, "table", "")
+    set filename to text.trim using (map_get_str using payload, "filename", "")
+    set save_flag to no
+    if (has_map_key using payload, "save_file") and ((payload at "save_file") is yes)
+      set save_flag to yes
+    end
+    set br to bridge_post using "/v1/db/export", {"target": tv.target, "table": table_name, "save_file": save_flag, "filename": filename}
+    if not br.configured
+      give back server.json using 503, record {ok: no, code: "GASH-E503", error: "gashboard-bridge is not configured"}
+    end
+    if not br.ok
+      set st_code to bridge_error_status using br, 422
+      give back server.json using st_code, record {ok: no, code: br.code, error: br.error}
+    end
+    give back server.json using 200, br.data
+  catch err
+    give back server.json using 400, record {ok: no, error: err.message}
+  end
+end
+
+route "GET" "/api/db/snapshots"
+  set raw_snaps to data.query using stmt_list_db_snapshots, record {}
+  set snaps_out to enrich_db_snapshots_for_ui using gash_cache, raw_snaps
+  set audits_out to data.query using stmt_list_db_audits, record {}
+  give back server.json using 200, record {ok: yes, snapshots: snaps_out, audits: audits_out}
+end
+
+route "POST" "/api/db/snapshots/restore" using req
+  if not (verify_csrf using gash_cache, req)
+    give back server.json using 403, record {ok: no, code: "GASH-E403", error: "Invalid or missing X-CSRF-Token"}
+  end
+  try
+    set payload to server.parse_json using req
+    set snap_id to text.trim using (map_get_str using payload, "snapshot_id", "")
+    set tok to map_get_str using payload, "approval_token", ""
+    if snap_id is ""
+      give back server.json using 400, record {ok: no, error: "snapshot_id is required"}
+    end
+    set snap_row to data.one using stmt_get_db_snapshot, record {id: snap_id}
+    if snap_row is nothing
+      give back server.json using 404, record {ok: no, error: ("DB Pre-Mutation Snapshot not found: " joined with snap_id)}
+    end
+    set chk to consume_approval using gash_cache, tok, "db_restore"
+    if not chk.ok
+      give back server.json using chk.status, record {ok: no, code: chk.code, error: chk.error}
+    end
+    set ap to chk.payload
+    if ap.snapshot_id is not snap_id
+      give back server.json using 403, record {ok: no, code: "GASH-E403", error: "approval_token snapshot_id mismatch"}
+    end
+    set br to bridge_post using "/v1/db/restore", {"target": ap.target, "snapshot_id": snap_id, "expected_sha256": snap_row.backup_sha256}
+    if not br.configured
+      give back server.json using 503, record {ok: no, code: "GASH-E503", error: "gashboard-bridge is not configured"}
+    end
+    if not br.ok
+      set st_code to bridge_error_status using br, 422
+      give back server.json using st_code, record {ok: no, code: br.code, error: br.error}
+    end
+    set now_r to call dates.now_utc
+    call data.execute using stmt_mark_db_snapshot, record {status: "restored", restored_at: now_r.iso, id: snap_id}
+    set restored_rows to map_get_str using br.data, "restored_rows", "0"
+    set audit_id to "dbaud_" joined with (crypto.random_hex using 16)
+    call data.execute using stmt_insert_db_audit, record {id: audit_id, target_id: ap.target_id, operation_kind: "restore_snapshot", sql_preview: ("ROLLBACK TO " joined with snap_id joined with " (" joined with snap_row.table_name joined with ")"), row_count: restored_rows, snapshot_id: snap_id, status: "restored", created_at: now_r.iso}
+
+    set raw_snaps to data.query using stmt_list_db_snapshots, record {}
+    set snaps_out to enrich_db_snapshots_for_ui using gash_cache, raw_snaps
+    set audits_out to data.query using stmt_list_db_audits, record {}
+
+    give back server.json using 200, record {ok: yes, restore: br.data, snapshots: snaps_out, audits: audits_out}
   catch err
     give back server.json using 400, record {ok: no, error: err.message}
   end

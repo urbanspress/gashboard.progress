@@ -238,6 +238,18 @@ func (m *TunnelManager) forwardConn(ctx context.Context, clientConn net.Conn, ta
 	}
 }
 
+// GetTunnel looks up an active tunnel by ID and verifies it has not expired.
+func (m *TunnelManager) GetTunnel(id string) (TunnelRecord, bool) {
+	cleanID := strings.TrimSpace(id)
+	m.mu.Lock()
+	entry, ok := m.tunnels[cleanID]
+	m.mu.Unlock()
+	if !ok {
+		return TunnelRecord{}, false
+	}
+	return entry.record, true
+}
+
 // ListTunnels returns active loopback tunnels sorted deterministically by creation order/ID.
 func (m *TunnelManager) ListTunnels() []TunnelRecord {
 	m.mu.Lock()

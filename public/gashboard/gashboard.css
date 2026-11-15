@@ -1,13 +1,19 @@
-:root {
+:root,
+[data-grex-theme="light"] {
+  color-scheme: light;
   --gash-bg: #f8fafc;
   --gash-surface: #ffffff;
-  --gash-border: #cbd5e1;
+  --gash-border: #64748b;
   --gash-text: #0f172a;
-  --gash-muted: #475569;
+  --gash-muted: #334155;
   --gash-primary: #047857;
   --gash-primary-hover: #065f46;
+  --gash-btn-fg: #ffffff;
+  --gash-link: #047857;
+  --gash-focus: #065f46;
   --gash-danger: #991b1b;
   --gash-danger-bg: #fef2f2;
+  --gash-danger-btn: #b91c1c;
   --gash-warn: #92400e;
   --gash-warn-bg: #fffbeb;
   --gash-pass: #065f46;
@@ -15,17 +21,43 @@
   --gash-radius: 10px;
 }
 
+[data-grex-theme="dark"] {
+  color-scheme: dark;
+  --gash-bg: #0b1120;
+  --gash-surface: #111827;
+  --gash-border: #64748b;
+  --gash-text: #f8fafc;
+  --gash-muted: #cbd5e1;
+  --gash-primary: #047857;
+  --gash-primary-hover: #065f46;
+  --gash-btn-fg: #ffffff;
+  --gash-link: #6ee7b7;
+  --gash-focus: #6ee7b7;
+  --gash-danger: #fecaca;
+  --gash-danger-bg: #7f1d1d;
+  --gash-danger-btn: #991b1b;
+  --gash-warn: #fde68a;
+  --gash-warn-bg: #78350f;
+  --gash-pass: #d1fae5;
+  --gash-pass-bg: #064e3b;
+}
+
 @media (prefers-color-scheme: dark) {
-  :root {
-    --gash-bg: #0f172a;
-    --gash-surface: #1e293b;
-    --gash-border: #334155;
+  :root:not([data-grex-theme="light"]) {
+    color-scheme: dark;
+    --gash-bg: #0b1120;
+    --gash-surface: #111827;
+    --gash-border: #64748b;
     --gash-text: #f8fafc;
     --gash-muted: #cbd5e1;
-    --gash-primary: #10b981;
-    --gash-primary-hover: #059669;
+    --gash-primary: #047857;
+    --gash-primary-hover: #065f46;
+    --gash-btn-fg: #ffffff;
+    --gash-link: #6ee7b7;
+    --gash-focus: #6ee7b7;
     --gash-danger: #fecaca;
     --gash-danger-bg: #7f1d1d;
+    --gash-danger-btn: #991b1b;
     --gash-warn: #fde68a;
     --gash-warn-bg: #78350f;
     --gash-pass: #d1fae5;
@@ -81,13 +113,28 @@ body.gash-body {
 }
 
 .gash-nav a {
-  color: var(--gash-primary);
+  color: var(--gash-link);
   font-weight: 600;
   text-decoration: none;
 }
 
 .gash-nav a:hover {
   text-decoration: underline;
+}
+
+.gash-theme-toggle {
+  padding: 0.5rem 0.95rem;
+  border-radius: 6px;
+  border: 1px solid var(--gash-border);
+  background: var(--gash-surface);
+  color: var(--gash-text);
+  font-weight: 600;
+  font-size: 0.9rem;
+  cursor: pointer;
+}
+
+.gash-theme-toggle:hover {
+  border-color: var(--gash-link);
 }
 
 main#gashboard-root {
@@ -157,7 +204,7 @@ main#gashboard-root {
   font-size: 0.92rem;
   cursor: pointer;
   background: var(--gash-primary);
-  color: #ffffff;
+  color: var(--gash-btn-fg);
 }
 
 .gash-btn:hover {
@@ -171,12 +218,12 @@ main#gashboard-root {
 }
 
 .gash-btn-danger {
-  background: #b91c1c;
-  color: #ffffff;
+  background: var(--gash-danger-btn);
+  color: var(--gash-btn-fg);
 }
 
 :focus-visible {
-  outline: 3px solid var(--gash-primary);
+  outline: 3px solid var(--gash-focus);
   outline-offset: 2px;
 }
 
@@ -277,4 +324,77 @@ main#gashboard-root {
   padding: 1rem 1.5rem 2rem;
   color: var(--gash-muted);
   font-size: 0.875rem;
+}
+
+.gash-db-workspace {
+  display: grid;
+  grid-template-columns: minmax(260px, 310px) 1fr;
+  gap: 1.25rem;
+  align-items: start;
+}
+
+@media (max-width: 860px) {
+  .gash-db-workspace {
+    grid-template-columns: 1fr;
+  }
+}
+
+.gash-db-sidebar,
+.gash-db-main {
+  background: var(--gash-bg);
+  border: 1px solid var(--gash-border);
+  border-radius: 8px;
+  padding: 1rem;
+  display: grid;
+  gap: 0.85rem;
+}
+
+.gash-db-table-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  gap: 0.4rem;
+}
+
+.gash-db-table-btn {
+  width: 100%;
+  text-align: left;
+  padding: 0.45rem 0.65rem;
+  border-radius: 6px;
+  border: 1px solid var(--gash-border);
+  background: var(--gash-surface);
+  color: var(--gash-text);
+  cursor: pointer;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.gash-db-table-btn[aria-current="true"] {
+  background: var(--gash-pass-bg);
+  color: var(--gash-pass);
+  border-color: var(--gash-link);
+  font-weight: 700;
+}
+
+.gash-table-scroll {
+  overflow-x: auto;
+  display: block;
+}
+
+.gash-sql-editor {
+  font-family: "Cascadia Mono", Consolas, "Courier New", monospace;
+  min-height: 110px;
+}
+
+.gash-approval-banner {
+  background: var(--gash-warn-bg);
+  color: var(--gash-warn);
+  border: 1px solid var(--gash-warn);
+  border-radius: 8px;
+  padding: 0.9rem 1rem;
+  display: grid;
+  gap: 0.6rem;
 }

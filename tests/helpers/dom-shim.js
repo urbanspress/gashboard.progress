@@ -56,7 +56,20 @@ export class DomElement {
     this.attributes = new Map();
     this.listeners = new Map();
     this.value = "";
-    this.style = {};
+    const styleProps = new Map();
+    this.style = {
+      setProperty(k, v) {
+        styleProps.set(String(k), String(v));
+      },
+      getPropertyValue(k) {
+        return styleProps.get(String(k)) || "";
+      },
+      removeProperty(k) {
+        const prev = styleProps.get(String(k)) || "";
+        styleProps.delete(String(k));
+        return prev;
+      },
+    };
   }
 
   get localName() {
@@ -195,8 +208,11 @@ export class DomElement {
 export class DomDocument {
   constructor() {
     this.innerHTMLWriteCount = 0;
+    this.documentElement = new DomElement("html", this);
     this.head = new DomElement("head", this);
     this.body = new DomElement("body", this);
+    this.documentElement.appendChild(this.head);
+    this.documentElement.appendChild(this.body);
   }
 
   createElement(tag) {

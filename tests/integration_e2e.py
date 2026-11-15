@@ -1,10 +1,12 @@
 #!/usr/bin/env python3
 """
-Gashboard v0.1.0 — 3-Gate Cross-Layer End-to-End Integration Suite.
+Gashboard v0.2.0 — 4-Gate Cross-Layer End-to-End Verification Suite.
 Gate 1: Static GRAB check, canonical `grab format` byte-for-byte parity, template probe, zero-<div> / zero-innerHTML scan.
-Gate 2: Node UI/DOM/contract suite (`node --test tests/*.test.js`), Go tests (`go test -count=1 ./...`), and `govulncheck ./...`.
-Gate 3: Live multi-process loopback integration wiring Gashboard v0.1.0 (GRAB v1.1.0 + Grex JS v1.0.0) +
-        gashboard-bridge + grabtaculousd v0.1.0 + grabman v0.1.0 + Groxy AI Site DNA.
+Gate 2: Node unit, zero-<div> DOM, Light/Dark WCAG AA >= 4.5:1 & contract suite (`node --test tests/*.test.js`).
+Gate 3: Go loopback SSH & DB inspector bridge (`go build ./...`, `go test -count=1 ./...`, `govulncheck ./...`).
+Gate 4: Live multi-process 6-layer integration (theme persistence, 127.0.0.1 tunneled DB + SQLite inspection,
+        ADR-025c wire fidelity, GRAB-E401 confinement, read-only guard, GROXY-SAFE-001 mutation + Pre-Mutation Snapshot
+        rollback, replay 409, and clean git status check across all 7 upstream/peer repos).
 """
 
 from __future__ import annotations
@@ -17,6 +19,7 @@ import re
 import shutil
 import socket
 import sqlite3
+import struct
 import subprocess
 import tempfile
 import threading
@@ -144,14 +147,139 @@ def start_tcp_echo_server() -> tuple[int, threading.Event, threading.Thread]:
     return port, stop_evt, th
 
 
+def start_fake_pg_v3_server() -> tuple[int, threading.Event, threading.Thread]:
+    """Minimal loopback PostgreSQL v3 wire responder used exclusively to verify tunneled pgx transport."""
+    srv = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+    srv.bind(("127.0.0.1", 0))
+    srv.listen(8)
+    srv.settimeout(0.25)
+    port = int(srv.getsockname()[1])
+    stop_evt = threading.Event()
+
+    def pg_msg(mtype: bytes, payload: bytes) -> bytes:
+        return mtype + struct.pack(">I", 4 + len(payload)) + payload
+
+    def recv_exact(sock: socket.socket, n: int) -> bytes:
+        buf = bytearray()
+        while len(buf) < n:
+            chunk = sock.recv(n - len(buf))
+            if not chunk:
+                raise EOFError("closed")
+            buf.extend(chunk)
+        return bytes(buf)
+
+    def row_desc() -> bytes:
+        cols = [(b"id", 20, 8), (b"price", 1700, -1)]
+        out = bytearray(struct.pack(">H", len(cols)))
+        for name, oid, sz in cols:
+            out.extend(name + b"\x00")
+            out.extend(struct.pack(">IhIhih", 0, 0, oid, sz, -1, 0))
+        return bytes(out)
+
+    def data_row(bin_int: bool) -> bytes:
+        out = bytearray(struct.pack(">H", 2))
+        if bin_int:
+            out.extend(struct.pack(">Iq", 8, 9007199254740993))
+        else:
+            v0 = b"9007199254740993"
+            out.extend(struct.pack(">I", len(v0)) + v0)
+        v1 = b"12345678901234567890.1234"
+        out.extend(struct.pack(">I", len(v1)) + v1)
+        return bytes(out)
+
+    def handle_conn(conn: socket.socket):
+        with conn:
+            conn.settimeout(5.0)
+            try:
+                sz_raw = recv_exact(conn, 4)
+                sz = struct.unpack(">I", sz_raw)[0]
+                payload = recv_exact(conn, sz - 4)
+                if len(payload) >= 4 and struct.unpack(">I", payload[:4])[0] == 80877103:
+                    conn.sendall(b"N")
+                    sz = struct.unpack(">I", recv_exact(conn, 4))[0]
+                    recv_exact(conn, sz - 4)
+                conn.sendall(pg_msg(b"R", b"\x00\x00\x00\x00") + pg_msg(b"S", b"server_version\x0018.1\x00") + pg_msg(b"Z", b"I"))
+
+                in_tx = False
+                last_q = ""
+                bin_int = False
+                while True:
+                    hdr = recv_exact(conn, 5)
+                    mtype = hdr[0:1]
+                    mlen = struct.unpack(">I", hdr[1:5])[0] - 4
+                    body = recv_exact(conn, mlen)
+                    if mtype == b"X":
+                        return
+                    if mtype == b"Q":
+                        up_q = body.rstrip(b"\x00").decode("utf-8", "replace").strip().upper()
+                        if "BEGIN" in up_q:
+                            in_tx = True
+                            conn.sendall(pg_msg(b"C", b"BEGIN\x00"))
+                        elif "ROLLBACK" in up_q:
+                            in_tx = False
+                            conn.sendall(pg_msg(b"C", b"ROLLBACK\x00"))
+                        elif up_q.startswith("SELECT"):
+                            conn.sendall(pg_msg(b"T", row_desc()) + pg_msg(b"D", data_row(False)) + pg_msg(b"C", b"SELECT 1\x00"))
+                        else:
+                            conn.sendall(pg_msg(b"C", b"OK\x00"))
+                        conn.sendall(pg_msg(b"Z", b"T" if in_tx else b"I"))
+                    elif mtype == b"P":
+                        parts = body.split(b"\x00", 2)
+                        if len(parts) >= 2:
+                            last_q = parts[1].decode("utf-8", "replace")
+                        conn.sendall(pg_msg(b"1", b""))
+                    elif mtype == b"D":
+                        if last_q.strip().upper().startswith("SELECT"):
+                            conn.sendall(pg_msg(b"T", row_desc()))
+                        else:
+                            conn.sendall(pg_msg(b"n", b""))
+                    elif mtype == b"B":
+                        bin_int = len(body) >= 4 and struct.unpack(">H", body[-4:-2])[0] == 1
+                        conn.sendall(pg_msg(b"2", b""))
+                    elif mtype == b"E":
+                        up = last_q.strip().upper()
+                        if up.startswith("BEGIN"):
+                            in_tx = True
+                            conn.sendall(pg_msg(b"C", b"BEGIN\x00"))
+                        elif up.startswith("ROLLBACK"):
+                            in_tx = False
+                            conn.sendall(pg_msg(b"C", b"ROLLBACK\x00"))
+                        elif up.startswith("SELECT"):
+                            conn.sendall(pg_msg(b"D", data_row(bin_int)) + pg_msg(b"C", b"SELECT 1\x00"))
+                        else:
+                            conn.sendall(pg_msg(b"C", b"OK\x00"))
+                    elif mtype == b"S":
+                        conn.sendall(pg_msg(b"Z", b"T" if in_tx else b"I"))
+            except (EOFError, OSError, struct.error):
+                return
+
+    def serve():
+        try:
+            while not stop_evt.is_set():
+                try:
+                    c, _ = srv.accept()
+                except TimeoutError:
+                    continue
+                except OSError:
+                    break
+                threading.Thread(target=handle_conn, args=(c,), daemon=True).start()
+        finally:
+            srv.close()
+
+    th = threading.Thread(target=serve, daemon=True)
+    th.start()
+    return port, stop_evt, th
+
+
 def gate_1_static_and_format():
     print("[Gate 1] Running grab check, canonical `grab format` parity, template probe, and zero-<div> scans...")
     assert Path(GRAB_BIN).exists(), f"Missing GRAB binary at {GRAB_BIN}"
 
     run_cmd([GRAB_BIN, "check", "--platform-config", "grab.platform.json", "src/gashboard.grab"])
     run_cmd([GRAB_BIN, "check", "migrations/001_gashboard_schema.grab"])
+    run_cmd([GRAB_BIN, "check", "migrations/002_db_manager_and_theme.grab"])
 
-    for rel in ["src/gashboard.grab", "migrations/001_gashboard_schema.grab"]:
+    for rel in ["src/gashboard.grab", "migrations/001_gashboard_schema.grab", "migrations/002_db_manager_and_theme.grab"]:
         target = REPO_ROOT / rel
         fmt = subprocess.run([GRAB_BIN, "format", rel], cwd=str(REPO_ROOT), stdout=subprocess.PIPE, stderr=subprocess.PIPE)
         assert fmt.returncode == 0, f"grab format {rel} failed: {fmt.stderr.decode('utf-8', 'replace')}"
@@ -168,7 +296,7 @@ def gate_1_static_and_format():
         probe_grab.write_text(
             'use server\n'
             'route "GET" "/probe"\n'
-            '  give back server.html using "dashboard.grab.html", record {csrf_token: "tok", gashboard_css_url: "/static/gashboard/gashboard.css", dashboard_js_url: "/static/gashboard/dashboard.js"}\n'
+            '  give back server.html using "dashboard.grab.html", record {csrf_token: "tok", gashboard_css_url: "/static/gashboard/gashboard.css", dashboard_js_url: "/static/gashboard/dashboard.js", initial_theme: "light"}\n'
             'end\n',
             encoding="utf-8",
         )
@@ -178,7 +306,7 @@ def gate_1_static_and_format():
 
     view_html = (REPO_ROOT / "views" / "dashboard.grab.html").read_text(encoding="utf-8")
     assert not re.search(r"<\s*/?\s*div\b", view_html, re.IGNORECASE), "views/dashboard.grab.html contains <div>"
-    for name in ["api-client.js", "marketplace.js", "tunnels.js", "fleet-dna.js", "dashboard.js"]:
+    for name in ["api-client.js", "theme.js", "marketplace.js", "tunnels.js", "fleet-dna.js", "db-manager.js", "dashboard.js"]:
         raw = (REPO_ROOT / "public" / "gashboard" / name).read_text(encoding="utf-8")
         stripped = re.sub(r"/\*[\s\S]*?\*/", "", raw)
         stripped = re.sub(r"//.*", "", stripped)
@@ -187,23 +315,31 @@ def gate_1_static_and_format():
     print("  [PASS] Gate 1 verified.")
 
 
-def gate_2_unit_and_vuln_suites():
-    print("[Gate 2] Running Node UI/DOM/contract suite, Go test suite, and govulncheck...")
+def gate_2_unit_dom_wcag_and_contracts():
+    print("[Gate 2] Running Node UI/DOM/WCAG AA/contract suite (`node --test tests/*.test.js`)...")
     run_cmd(["node", "--test", "tests/unit_contracts.test.js", "tests/unit_ui_dom.test.js"])
+    print("  [PASS] Gate 2 verified.")
+
+
+def gate_3_go_bridge_build_test_vuln():
+    print("[Gate 3] Running Go build, unit/E2E tests, and govulncheck (0 vulnerabilities)...")
+    run_cmd(["go", "build", "./..."])
     run_cmd(["go", "test", "-count=1", "./..."])
     govuln = find_govulncheck()
     run_cmd([govuln, "./..."])
-    print("  [PASS] Gate 2 verified (0 Go vulnerabilities, 100% Node + Go tests pass).")
+    print("  [PASS] Gate 3 verified (0 vulnerabilities).")
 
 
-def gate_3_live_cross_layer_e2e():
-    print("[Gate 3] Running live 6-layer E2E integration (Gashboard + Go SSH Bridge + Grabtaculous + grabman + Groxy DNA)...")
+def gate_4_live_6layer_e2e():
+    print("[Gate 4] Running live 6-layer E2E integration (Gashboard v0.2.0 + Bridge DB Inspector + Grabtaculous + grabman + Groxy DNA)...")
     assert Path(GRABMAN_BIN).exists(), f"Missing grabman binary at {GRABMAN_BIN}"
     assert Path(GRABTAC_BIN).exists(), f"Missing grabtaculous binary at {GRABTAC_BIN}"
 
     tmp_root = Path(tempfile.mkdtemp(prefix="gash_e2e_"))
     echo_stop = None
     echo_thread = None
+    pg_stop = None
+    pg_thread = None
     bridge_proc = None
     grabtac_proc = None
     gash_proc = None
@@ -220,10 +356,37 @@ def gate_3_live_cross_layer_e2e():
         (app_dir / "storage").mkdir(parents=True, exist_ok=True)
         db_file = app_dir / "storage" / "gashboard.db"
 
+        # Verify v0.1.0 -> v0.2.0 incremental SQLite migration
         run_cmd(
             [GRAB_BIN, "migrate", "--db-config", "grab.data.json", "--allow-db", "main:migrate", "migrations/001_gashboard_schema.grab"],
             cwd=app_dir,
         )
+        run_cmd(
+            [GRAB_BIN, "migrate", "--db-config", "grab.data.json", "--allow-db", "main:migrate", "migrations/002_db_manager_and_theme.grab"],
+            cwd=app_dir,
+        )
+
+        # Seed confined demo SQLite DB inside workspace storage/ for Visual DB Manager E2E
+        demo_db = app_dir / "storage" / "demo_store.db"
+        dcon = sqlite3.connect(str(demo_db))
+        try:
+            dcon.executescript(
+                """
+                CREATE TABLE invoices (
+                    id INTEGER PRIMARY KEY,
+                    sku TEXT NOT NULL,
+                    amount_exact TEXT NOT NULL,
+                    qty INTEGER NOT NULL
+                );
+                CREATE INDEX idx_invoices_sku ON invoices(sku);
+                INSERT INTO invoices (id, sku, amount_exact, qty) VALUES
+                    (9007199254740993, 'SKU-ALPHA', '12345678901234567890.1234', 42),
+                    (9007199254740995, 'SKU-BETA', '99.9500', 7);
+                """
+            )
+            dcon.commit()
+        finally:
+            dcon.close()
 
         # Build Groxy AI Site DNA + scaffold workspace with grabman
         dna_dir = tmp_root / "site_dna"
@@ -300,8 +463,9 @@ def gate_3_live_cross_layer_e2e():
         bridge_bin = tmp_root / ("gashboard-bridge.exe" if os.name == "nt" else "gashboard-bridge")
         run_cmd(["go", "build", "-o", str(bridge_bin), "./bridge/cmd/gashboard-bridge"])
 
-        # Start local TCP echo server + grabtaculousd + gashboard-bridge + gashboard
+        # Start local TCP echo server + fake PG v3 responder + grabtaculousd + gashboard-bridge + gashboard
         echo_port, echo_stop, echo_thread = start_tcp_echo_server()
+        pg_port, pg_stop, pg_thread = start_fake_pg_v3_server()
         bridge_port = free_loopback_port()
         grabtac_port = free_loopback_port()
         gash_port = free_loopback_port()
@@ -345,6 +509,7 @@ def gate_3_live_cross_layer_e2e():
                 "--grabman-bin", GRABMAN_BIN,
                 "--grabtaculous-bin", GRABTAC_BIN,
                 "--grab-bin", GRAB_BIN,
+                "--sqlite-root", str(app_dir / "storage"),
             ],
             cwd=str(REPO_ROOT),
             env=bridge_env,
@@ -639,7 +804,211 @@ def gate_3_live_cross_layer_e2e():
         )
         assert st == 409 and json.loads(rb_rep_raw)["code"] == "GASH-E409"
 
-        print("  [PASS] Gate 3 live 6-layer cross-stack integration verified.")
+        # ----------------------------------------------------------------------
+        # v0.2.0 E2E: Light/Dark Theme Switcher Persistence (Zero-FOUC SSR + SQLite)
+        # ----------------------------------------------------------------------
+        assert 'data-grex-theme="light"' in ui_html, "Expected initial SSR theme light"
+        assert 'id="gashboard-theme-toggle"' in ui_html, "Missing theme toggle button in HTML"
+        st, _, bad_theme_raw = http_request(
+            f"{gash_url}/api/preferences/theme",
+            method="POST",
+            headers=csrf_hdrs,
+            body={"theme": "neon"},
+        )
+        assert st == 422 and json.loads(bad_theme_raw)["code"] == "GASH-E422"
+
+        st, _, set_dark_raw = http_request(
+            f"{gash_url}/api/preferences/theme",
+            method="POST",
+            headers=csrf_hdrs,
+            body={"theme": "dark"},
+        )
+        assert st == 200 and json.loads(set_dark_raw)["theme"] == "dark"
+
+        st, _, dark_html = http_request(f"{gash_url}/gashboard")
+        assert st == 200 and 'data-grex-theme="dark"' in dark_html, "Reloaded SSR HTML did not apply persisted dark theme (FOUC risk)"
+        st, _, _ = http_request(f"{gash_url}/api/preferences/theme", method="POST", headers=csrf_hdrs, body={"theme": "light"})
+        assert st == 200
+
+        # ----------------------------------------------------------------------
+        # v0.2.0 E2E: Visual DB Manager over 127.0.0.1 SSH Tunnel + Confined SQLite
+        # ----------------------------------------------------------------------
+        # 1. Open active 127.0.0.1 tunnel pointing to fake PG v3 responder and query via Gashboard -> Bridge -> Tunnel
+        st, _, pg_tun_raw = http_request(
+            f"{gash_url}/api/tunnels/open",
+            method="POST",
+            headers=csrf_hdrs,
+            body={
+                "node_id": node_id,
+                "engine": "postgres",
+                "local_port": "0",
+                "ttl_minutes": "15",
+                "remote_target_addr": f"127.0.0.1:{pg_port}",
+            },
+        )
+        assert st == 200, f"Open PG tunnel failed: {pg_tun_raw}"
+        pg_tun_id = json.loads(pg_tun_raw)["tunnel"]["id"]
+
+        st, _, db_tgts_raw = http_request(f"{gash_url}/api/db/targets")
+        assert st == 200
+        db_targets = json.loads(db_tgts_raw)["targets"]
+        assert any(t["target_id"] == "sqlite:gashboard.db" for t in db_targets)
+        assert any(t.get("tunnel_id") == pg_tun_id for t in db_targets)
+
+        st, _, pg_q_raw = http_request(
+            f"{gash_url}/api/db/query",
+            method="POST",
+            headers=csrf_hdrs,
+            body={
+                "target": {"engine": "postgres", "tunnel_id": pg_tun_id, "db_user": "deploy", "db_name": "store"},
+                "sql": "SELECT id, price FROM catalog",
+            },
+        )
+        assert st == 200, f"Tunneled PG read-only query failed: {pg_q_raw}"
+        pg_q_doc = json.loads(pg_q_raw)
+        assert pg_q_doc["read_only"] is True
+        assert pg_q_doc["rows"][0]["id"] == "9007199254740993"
+        assert pg_q_doc["rows"][0]["price"] == "12345678901234567890.1234"
+
+        st, _, _ = http_request(f"{gash_url}/api/tunnels/close", method="POST", headers=csrf_hdrs, body={"id": pg_tun_id})
+        assert st == 200
+
+        # 2. Enforce GRAB-E401 confinement, ADR-005 direct host rejection, limit <= 100 cap, and read-only write block
+        st, _, trav_raw = http_request(f"{gash_url}/api/db/schema?engine=sqlite&sqlite_path=../../etc/passwd")
+        assert st == 403 and json.loads(trav_raw)["code"] == "GRAB-E401"
+
+        st, _, pub_raw = http_request(
+            f"{gash_url}/api/db/query",
+            method="POST",
+            headers=csrf_hdrs,
+            body={"target": {"engine": "postgres", "host": "198.51.100.24", "db_name": "prod"}, "sql": "SELECT 1"},
+        )
+        assert st == 422 and json.loads(pub_raw)["code"] == "GASH-E422"
+
+        demo_target = {"target_id": "sqlite:demo_store.db", "engine": "sqlite", "sqlite_path": "demo_store.db"}
+        st, _, cap101_raw = http_request(
+            f"{gash_url}/api/db/rows",
+            method="POST",
+            headers=csrf_hdrs,
+            body={"target": demo_target, "table": "invoices", "page": "1", "limit": "101"},
+        )
+        assert st == 422 and json.loads(cap101_raw)["code"] == "GASH-E422"
+
+        st, _, ro_blk_raw = http_request(
+            f"{gash_url}/api/db/query",
+            method="POST",
+            headers=csrf_hdrs,
+            body={"target": demo_target, "sql": "DELETE FROM invoices WHERE sku = 'SKU-ALPHA'"},
+        )
+        assert st == 403 and json.loads(ro_blk_raw)["code"] == "GASH-E403"
+
+        # 3. Confined SQLite schema inspection + paginated rows + exact ADR-025c base-10 wire strings
+        st, _, sc_raw = http_request(f"{gash_url}/api/db/schema?engine=sqlite&sqlite_path=demo_store.db")
+        assert st == 200, f"SQLite schema failed: {sc_raw}"
+        sc_doc = json.loads(sc_raw)
+        assert sc_doc["tables"][0]["name"] == "invoices" and sc_doc["tables"][0]["row_count"] == "2"
+
+        st, _, rows_raw = http_request(
+            f"{gash_url}/api/db/rows",
+            method="POST",
+            headers=csrf_hdrs,
+            body={"target": demo_target, "table": "invoices", "page": "1", "limit": "25", "filter_col": "sku", "filter_op": "eq", "filter_val": "SKU-ALPHA"},
+        )
+        assert st == 200, f"Browse rows failed: {rows_raw}"
+        rows_doc = json.loads(rows_raw)
+        assert rows_doc["rows"][0]["id"] == "9007199254740993"
+        assert rows_doc["rows"][0]["amount_exact"] == "12345678901234567890.1234"
+
+        # 4. GROXY-SAFE-001 Mutation Gate: Plan -> Pre-Mutation Snapshot -> Execute -> 409 Replay -> 1-Click Snapshot Restore
+        st, _, bad_exec_raw = http_request(
+            f"{gash_url}/api/db/mutate/execute",
+            method="POST",
+            headers=csrf_hdrs,
+            body={"approval_token": "bogus-unminted-token"},
+        )
+        assert st == 403 and json.loads(bad_exec_raw)["code"] == "GASH-E403"
+
+        st, _, mplan_raw = http_request(
+            f"{gash_url}/api/db/mutate/plan",
+            method="POST",
+            headers=csrf_hdrs,
+            body={"target": demo_target, "sql": "UPDATE invoices SET amount_exact = '0.0001' WHERE sku = 'SKU-ALPHA'"},
+        )
+        assert st == 200, f"DB mutate plan failed: {mplan_raw}"
+        mplan_doc = json.loads(mplan_raw)
+        db_snap_id = mplan_doc["snapshot_id"]
+        mut_tok = mplan_doc["approval_token"]
+        assert mplan_doc["pre_row_count"] == "2"
+
+        st, _, mexec_raw = http_request(
+            f"{gash_url}/api/db/mutate/execute",
+            method="POST",
+            headers=csrf_hdrs,
+            body={"approval_token": mut_tok},
+        )
+        assert st == 200, f"DB mutate execute failed: {mexec_raw}"
+        mexec_doc = json.loads(mexec_raw)
+        assert mexec_doc["execution"]["affected_rows"] == "1"
+        rb_db_tok = mexec_doc["restore_approval_token"]
+
+        st, _, mrep_raw = http_request(
+            f"{gash_url}/api/db/mutate/execute",
+            method="POST",
+            headers=csrf_hdrs,
+            body={"approval_token": mut_tok},
+        )
+        assert st == 409 and json.loads(mrep_raw)["code"] == "GASH-E409"
+
+        st, _, changed_rows_raw = http_request(
+            f"{gash_url}/api/db/rows",
+            method="POST",
+            headers=csrf_hdrs,
+            body={"target": demo_target, "table": "invoices", "page": "1", "limit": "25", "sort_col": "id"},
+        )
+        assert st == 200 and json.loads(changed_rows_raw)["rows"][0]["amount_exact"] == "0.0001"
+
+        # 1-Click Pre-Mutation Snapshot Rollback -> restores exact ADR-025c decimal + blocks replay with 409
+        st, _, restore_raw = http_request(
+            f"{gash_url}/api/db/snapshots/restore",
+            method="POST",
+            headers=csrf_hdrs,
+            body={"snapshot_id": db_snap_id, "approval_token": rb_db_tok},
+        )
+        assert st == 200, f"DB snapshot restore failed: {restore_raw}"
+        assert json.loads(restore_raw)["restore"]["restored_rows"] == "2"
+
+        st, _, restore_rep_raw = http_request(
+            f"{gash_url}/api/db/snapshots/restore",
+            method="POST",
+            headers=csrf_hdrs,
+            body={"snapshot_id": db_snap_id, "approval_token": rb_db_tok},
+        )
+        assert st == 409 and json.loads(restore_rep_raw)["code"] == "GASH-E409"
+
+        st, _, restored_rows_raw = http_request(
+            f"{gash_url}/api/db/rows",
+            method="POST",
+            headers=csrf_hdrs,
+            body={"target": demo_target, "table": "invoices", "page": "1", "limit": "25", "sort_col": "id"},
+        )
+        assert st == 200 and json.loads(restored_rows_raw)["rows"][0]["amount_exact"] == "12345678901234567890.1234"
+
+        # 5. Verify all 7 upstream/peer repositories remain strictly untouched
+        upstream_repos = [
+            Path(r"C:\Development\GRAB"),
+            Path(r"C:\Development\grex-js"),
+            Path(r"C:\Development\grablab-cms"),
+            Path(r"C:\Development\grex-builder"),
+            Path(r"C:\Development\groxy-ai"),
+            Path(r"C:\Development\grabman"),
+            Path(r"C:\Development\grabtaculous"),
+        ]
+        for repo in upstream_repos:
+            if repo.exists():
+                gs = run_cmd(["git", "status", "--short"], cwd=repo)
+                assert gs.stdout.strip() == "", f"Upstream/peer repo {repo} is dirty:\n{gs.stdout}"
+
+        print("  [PASS] Gate 4 live 6-layer cross-stack integration + v0.2.0 Theme & DB Manager verified (all 7 peer repos clean).")
     except Exception:
         for lp in log_paths:
             if lp.exists():
@@ -652,6 +1021,10 @@ def gate_3_live_cross_layer_e2e():
             echo_stop.set()
         if echo_thread is not None:
             echo_thread.join(timeout=2)
+        if pg_stop is not None:
+            pg_stop.set()
+        if pg_thread is not None:
+            pg_thread.join(timeout=2)
         terminate_process(gash_proc)
         terminate_process(bridge_proc)
         terminate_process(grabtac_proc)
@@ -665,9 +1038,10 @@ def gate_3_live_cross_layer_e2e():
 
 def main():
     gate_1_static_and_format()
-    gate_2_unit_and_vuln_suites()
-    gate_3_live_cross_layer_e2e()
-    print("\nALL 3 GASHBOARD v0.1.0 VERIFICATION GATES PASSED 100%.")
+    gate_2_unit_dom_wcag_and_contracts()
+    gate_3_go_bridge_build_test_vuln()
+    gate_4_live_6layer_e2e()
+    print("\nALL 4 GASHBOARD v0.2.0 VERIFICATION GATES PASSED 100%.")
 
 
 if __name__ == "__main__":

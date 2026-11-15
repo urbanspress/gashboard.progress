@@ -2,10 +2,14 @@ package main
 
 import (
 	"bytes"
+	"database/sql"
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
+	"path/filepath"
 	"testing"
+
+	_ "modernc.org/sqlite"
 )
 
 func TestBridgeServerRequiresBearerAuthAndRejectsPublicBind(t *testing.T) {
@@ -59,5 +63,49 @@ func TestBridgeServerRequiresBearerAuthAndRejectsPublicBind(t *testing.T) {
 	}
 	if okVal, _ := parsed["ok"].(bool); !okVal {
 		t.Fatalf("expected ok:true in /v1/tunnels response, got %v", parsed)
+	}
+}
+
+func TestBridgeDBInspectorHTTPRoutes(t *testing.T) {
+	root := t.TempDir()
+	dbFile := filepath.Join(root, "app.db")
+	db, err := sql.Open("sqlite", "file:"+filepath.ToSlash(dbFile))
+	if err != nil {
+		t.Fatalf("open test db: %v", err)
+	}
+	_, err = db.Exec(`CREATE TABLE orders (id INTEGER PRIMARY KEY, total TEXT NOT NULL); INSERT INTO orders (id, total) VALUES (9007199254740993, '98765432109876543210.4321');`)
+	_ = db.Close()
+	if err != nil {
+		t.Fatalf("seed db: %v", err)
+	}
+
+	srv, err := NewBridgeServer("127.0.0.1:0", "bridge-db-tok", "", "", "", "")
+	if err != nil {
+		t.Fatalf("NewBridgeServer: %v", err)
+	}
+	srv.SetSQLiteRoot(root)
+	h := srv.routes()
+
+	call := func(path, body string) *httptest.ResponseRecorder {
+		req := httptest.NewRequest(http.MethodPost, path, bytes.NewBufferString(body))
+		req.Header.Set("Authorization", "Bearer bridge-db-tok")
+		req.Header.Set("Content-Type", "application/json")
+		rec := httptest.NewRecorder()
+		h.ServeHTTP(rec, req)
+		return rec
+	}
+
+	if rec := call("/v1/db/schema", `{"engine":"sqlite","sqlite_path":"../../outside.db"}`); rec.Code != 403 {
+		t.Fatalf("expected 403 GRAB-E401 traversal block, got %d: %s", rec.Code, rec.Body.String())
+	}
+	if rec := call("/v1/db/rows", `{"target":{"engine":"sqlite","sqlite_path":"app.db"},"table":"orders","page":"1","limit":"150"}`); rec.Code != 422 {
+		t.Fatalf("expected 422 for limit>100, got %d: %s", rec.Code, rec.Body.String())
+	}
+	if rec := call("/v1/db/query", `{"target":{"engine":"sqlite","sqlite_path":"app.db"},"sql":"DELETE FROM orders"}`); rec.Code != 403 {
+		t.Fatalf("expected 403 for mutation in read-only query, got %d: %s", rec.Code, rec.Body.String())
+	}
+	rec := call("/v1/db/rows", `{"target":{"engine":"sqlite","sqlite_path":"app.db"},"table":"orders","page":"1","limit":"25"}`)
+	if rec.Code != 200 || !bytes.Contains(rec.Body.Bytes(), []byte("98765432109876543210.4321")) {
+		t.Fatalf("unexpected /v1/db/rows (%d): %s", rec.Code, rec.Body.String())
 	}
 }

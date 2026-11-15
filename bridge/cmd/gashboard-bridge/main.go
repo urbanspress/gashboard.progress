@@ -18,12 +18,13 @@ import (
 	"syscall"
 	"time"
 
+	"gashboard/bridge/internal/dbinspect"
 	"gashboard/bridge/internal/localcli"
 	gssh "gashboard/bridge/internal/ssh"
 )
 
 // Version identifies the Gashboard Go SSH sidecar release version.
-var Version = "0.1.0"
+var Version = "0.2.0"
 
 const defaultListenAddr = "127.0.0.1:9391"
 
@@ -33,6 +34,8 @@ type BridgeServer struct {
 	knownHosts    *gssh.KnownHostsVerifier
 	client        *gssh.ControlClient
 	tunnels       *gssh.TunnelManager
+	inspector     *dbinspect.Inspector
+	sqliteRoot    string
 	grabmanBin    string
 	grabtacBin    string
 	grabBin       string
@@ -65,12 +68,19 @@ func NewBridgeServer(listenAddr, bridgeToken, knownHostsFile, grabmanBin, grabta
 	} else {
 		kh, _ = gssh.NewKnownHostsVerifier(nil)
 	}
+	sqliteRoot := strings.TrimSpace(os.Getenv("GASHBOARD_SQLITE_ROOT"))
+	if sqliteRoot == "" {
+		sqliteRoot = "storage"
+	}
+	tunnels := gssh.NewTunnelManager(kh)
 	bs := &BridgeServer{
 		listenAddr: cleanAddr,
 		token:      tok,
 		knownHosts: kh,
 		client:     gssh.NewControlClient(kh),
-		tunnels:    gssh.NewTunnelManager(kh),
+		tunnels:    tunnels,
+		inspector:  dbinspect.NewInspector(sqliteRoot, tunnels),
+		sqliteRoot: sqliteRoot,
 		grabmanBin: grabmanBin,
 		grabtacBin: grabtacBin,
 		grabBin:    grabBin,
@@ -83,6 +93,16 @@ func NewBridgeServer(listenAddr, bridgeToken, knownHostsFile, grabmanBin, grabta
 		MaxHeaderBytes:    1 << 20,
 	}
 	return bs, nil
+}
+
+// SetSQLiteRoot configures the confined workspace root for local SQLite inspection and snapshots.
+func (s *BridgeServer) SetSQLiteRoot(dir string) {
+	clean := strings.TrimSpace(dir)
+	if clean == "" {
+		clean = "storage"
+	}
+	s.sqliteRoot = clean
+	s.inspector = dbinspect.NewInspector(clean, s.tunnels)
 }
 
 func (s *BridgeServer) Token() string       { return s.token }
@@ -127,6 +147,13 @@ func (s *BridgeServer) routes() http.Handler {
 	mux.HandleFunc("POST /v1/grabman/solve-verify", s.requireAuth(s.handleGrabmanSolveVerify))
 	mux.HandleFunc("POST /v1/grabman/dna-preview", s.requireAuth(s.handleGrabmanDNAPreview))
 	mux.HandleFunc("POST /v1/grabtaculous/proxy", s.requireAuth(s.handleGrabtaculousProxy))
+	mux.HandleFunc("POST /v1/db/schema", s.requireAuth(handleDBRoute(s.handleDBSchema)))
+	mux.HandleFunc("POST /v1/db/rows", s.requireAuth(handleDBRoute(s.handleDBRows)))
+	mux.HandleFunc("POST /v1/db/query", s.requireAuth(handleDBRoute(s.handleDBQuery)))
+	mux.HandleFunc("POST /v1/db/mutate/plan", s.requireAuth(handleDBRoute(s.handleDBMutatePlan)))
+	mux.HandleFunc("POST /v1/db/mutate/execute", s.requireAuth(handleDBRoute(s.handleDBMutateExecute)))
+	mux.HandleFunc("POST /v1/db/export", s.requireAuth(handleDBRoute(s.handleDBExport)))
+	mux.HandleFunc("POST /v1/db/restore", s.requireAuth(handleDBRoute(s.handleDBRestore)))
 	return mux
 }
 
@@ -396,6 +423,50 @@ func (s *BridgeServer) handleGrabtaculousProxy(w http.ResponseWriter, r *http.Re
 	_, _ = w.Write(raw)
 }
 
+func handleDBRoute[Req any, Res any](fn func(context.Context, Req) (Res, int, error)) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		var req Req
+		if err := decodeJSON(r, &req); err != nil {
+			writeBridgeErr(w, http.StatusBadRequest, err)
+			return
+		}
+		res, status, err := fn(r.Context(), req)
+		if err != nil {
+			writeBridgeErr(w, status, err)
+			return
+		}
+		writeJSON(w, status, res)
+	}
+}
+
+func (s *BridgeServer) handleDBSchema(ctx context.Context, req dbinspect.TargetSpec) (*dbinspect.SchemaResult, int, error) {
+	return s.inspector.InspectSchema(ctx, req)
+}
+
+func (s *BridgeServer) handleDBRows(ctx context.Context, req dbinspect.RowsRequest) (*dbinspect.RowsResult, int, error) {
+	return s.inspector.BrowseRows(ctx, req)
+}
+
+func (s *BridgeServer) handleDBQuery(ctx context.Context, req dbinspect.QueryRequest) (*dbinspect.QueryResult, int, error) {
+	return s.inspector.RunReadOnlyQuery(ctx, req)
+}
+
+func (s *BridgeServer) handleDBMutatePlan(ctx context.Context, req dbinspect.MutatePlanRequest) (*dbinspect.MutatePlanResult, int, error) {
+	return s.inspector.PlanMutation(ctx, req)
+}
+
+func (s *BridgeServer) handleDBMutateExecute(ctx context.Context, req dbinspect.MutateExecuteRequest) (*dbinspect.MutateExecuteResult, int, error) {
+	return s.inspector.ExecuteMutation(ctx, req)
+}
+
+func (s *BridgeServer) handleDBExport(ctx context.Context, req dbinspect.ExportRequest) (*dbinspect.ExportResult, int, error) {
+	return s.inspector.ExportSQL(ctx, req)
+}
+
+func (s *BridgeServer) handleDBRestore(ctx context.Context, req dbinspect.RestoreRequest) (*dbinspect.RestoreResult, int, error) {
+	return s.inspector.RestoreSnapshot(ctx, req)
+}
+
 func decodeJSON(r *http.Request, dst any) error {
 	defer r.Body.Close()
 	body, err := io.ReadAll(io.LimitReader(r.Body, 2<<20))
@@ -412,6 +483,10 @@ func writeBridgeErr(w http.ResponseWriter, status int, err error) {
 	var be *gssh.BridgeError
 	if errors.As(err, &be) {
 		payload["code"] = be.Code
+	}
+	var ie *dbinspect.InspectorError
+	if errors.As(err, &ie) {
+		payload["code"] = ie.Code
 	}
 	writeJSON(w, status, payload)
 }
@@ -435,6 +510,7 @@ func main() {
 	grabmanBin := flag.String("grabman-bin", "", "Optional grabman binary path")
 	grabtacBin := flag.String("grabtaculous-bin", "", "Optional grabtaculous binary path")
 	grabBin := flag.String("grab-bin", "", "Optional GRAB binary path")
+	sqliteRoot := flag.String("sqlite-root", "", "Confined SQLite storage directory (default ./storage)")
 	showVersion := flag.Bool("version", false, "Print version")
 	flag.Parse()
 
@@ -446,6 +522,9 @@ func main() {
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "gashboard-bridge: %v\n", err)
 		os.Exit(1)
+	}
+	if strings.TrimSpace(*sqliteRoot) != "" {
+		srv.SetSQLiteRoot(*sqliteRoot)
 	}
 	fmt.Printf("gashboard-bridge v%s listening strictly on %s\n", Version, *listenAddr)
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)

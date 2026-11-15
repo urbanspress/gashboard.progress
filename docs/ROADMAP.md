@@ -26,9 +26,9 @@ Delivered Scope:
 
 ## `v0.2.0` — Light/Dark Theme Switcher & Built-In phpMyAdmin-Style Visual Database Manager
 
-**Status:** Specification in Review ([`specifications/GASHBOARD-SPEC-002.md`](../specifications/GASHBOARD-SPEC-002.md))
+**Status:** Complete ([`specifications/GASHBOARD-SPEC-002.md`](../specifications/GASHBOARD-SPEC-002.md), [`CHANGELOG.md`](../CHANGELOG.md))
 
-Proposed Scope:
+Delivered Scope:
 - **WCAG AA Light/Dark Theme Switcher:** Reactive **`Grex JS v1.0.0`** theme toggle (`createTheme` / `computeContrastRatio() >= 4.5:1`), persisted in local preferences and SQLite, with zero wrapper `<div>` elements, zero FOUC, and intact `:focus-visible` rings.
 - **Built-In phpMyAdmin-Style Database Manager:** Operates strictly over Gashboard's `known_hosts`-pinned `127.0.0.1` SSH tunnels (`PostgreSQL`, `MariaDB`) or confined local SQLite (never exposing a public phpMyAdmin/Adminer port), featuring a semantic visual schema & table explorer, paginated row browser (`<= 100` rows/page) with exact `ADR-025c` numeric string fidelity, read-only `SELECT`/`EXPLAIN` query runner by default, and `GROXY-SAFE-001` human-in-the-loop write/DDL gates (`X-CSRF-Token` + single-use `approval_token` + Pre-Mutation Snapshot).
 
@@ -36,7 +36,7 @@ Proposed Scope:
 
 ## `v0.3.0` — Namecheap DNS + Auto-HTTPS Wizard
 
-**Status:** Specification in Review ([`specifications/GASHBOARD-SPEC-003.md`](../specifications/GASHBOARD-SPEC-003.md))
+**Status:** Approved ([`specifications/GASHBOARD-SPEC-003.md`](../specifications/GASHBOARD-SPEC-003.md))
 
 Proposed Scope:
 - **Encrypted Namecheap Credential Vault:** Stores Namecheap API User, API Key, and Whitelisted Client IP encrypted at rest in SQLite via **GRAB `v1.1.0`** `crypto.encrypt_aead` (AES-256-GCM)—never rendered in plaintext in the DOM or logs.

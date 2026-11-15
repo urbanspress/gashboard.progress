@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-Gashboard v0.1.0 — Plain-English Release Guide HTML & PDF Generator.
+Gashboard v0.2.0 — Plain-English Release Guide HTML & PDF Generator.
 Renders `docs/releases/html/Gashboard-v<VERSION>-Guide.html` and prints it to
 `docs/releases/pdf/Gashboard-v<VERSION>-Guide.pdf` using headless Chrome or Edge.
 """
@@ -84,20 +84,20 @@ def build_html(version: str) -> str:
   <h2>1. What Is Included in Gashboard v{version}</h2>
   <ul>
     <li><strong>Stealth 127.0.0.1 Control Panel (GRAB v1.1.0 + Pure Grex JS v1.0.0):</strong> Refuses public <code>0.0.0.0</code> bindings by default. Contains zero wrapper <code>&lt;div&gt;</code> tags, zero <code>innerHTML</code> writes, 100% WCAG AA accessible contrast, and exact base-10 decimals (<code>ADR-025c</code>).</li>
-    <li><strong>AES-256-GCM Local Credential Vault:</strong> Any SSH passphrases or agent references you register are encrypted immediately using GRAB <code>use crypto</code> AES-256-GCM before touching local SQLite storage, and never sent back in API responses.</li>
-    <li><strong>Pure Go Loopback SSH &amp; Tunnel Sidecar (<code>gashboard-bridge</code>):</strong> Enforces OpenSSH <code>known_hosts</code> host-key fingerprint pinning (zero <code>InsecureIgnoreHostKey</code>), opens up to 8 concurrent <code>127.0.0.1:&lt;port&gt;</code> private tunnels to PostgreSQL, MariaDB, or Redis, and proxies remote <code>grabtaculousd</code> nodes safely.</li>
-    <li><strong>1-Click Hardened App Marketplace:</strong> Deploys GrabLab CMS + Grex Theme Builder + Groxy AI or private databases in read-only hardened containers with automatic Caddy, Nginx, or Cloudflare Tunnel SSL—after generating a safety plan and single-use approval confirmation.</li>
-    <li><strong>Portable Site DNA Fleet Deployer &amp; Instant Rollbacks:</strong> Validates Groxy AI <code>Site DNA</code> bundles against <code>grabman.lock</code>, triggers zero-downtime <code>grabtaculous</code> rollouts, and lets you revert any server in one click via automatic Pre-Deploy Snapshots.</li>
+    <li><strong>WCAG AA Light/Dark Theme Switcher (New in v0.2.0):</strong> Toggle crisp <strong>Light</strong> or <strong>Dark</strong> appearance in the header using <code>Grex JS</code> <code>createTheme</code> (<code>[data-grex-theme]</code>). Preferences save locally and in SQLite so pages open in your chosen theme immediately without white flash (zero FOUC), while maintaining <code>&gt;= 4.5:1</code> contrast and clear keyboard focus outlines.</li>
+    <li><strong>Built-In phpMyAdmin-Style Visual Database Manager (New in v0.2.0):</strong> Inspect local SQLite files (confined inside <code>--sqlite-root</code>; blocks path traversal with <code>GRAB-E401</code>) or remote PostgreSQL and MariaDB servers strictly inside your encrypted <code>127.0.0.1</code> SSH tunnels—never exposing phpMyAdmin or database ports publicly. Browse tables, columns, indexes, and foreign keys; paginate up to <code>100</code> rows/page with exact <code>ADR-025c</code> base-10 integers/decimals; run read-only <code>SELECT</code>/<code>EXPLAIN</code> queries safely; and export SQL dumps.</li>
+    <li><strong>Safety-Gated Writes &amp; Automatic Pre-Mutation Snapshots (<code>GROXY-SAFE-001</code>):</strong> Any row insert, update, delete, DDL change, or SQL import requires a plain-English impact summary, an automatic <code>Pre-Mutation Snapshot</code> (SHA-256 verified), <code>X-CSRF-Token</code>, and a single-use <code>approval_token</code> (replays blocked with HTTP <code>409</code>)—plus <strong>1-Click Snapshot Restore</strong>.</li>
+    <li><strong>AES-256-GCM Local Vault, 1-Click Marketplace &amp; Site DNA Fleet Rollouts:</strong> Encrypts SSH secrets locally with GRAB <code>use crypto</code>, pins OpenSSH <code>known_hosts</code> fingerprints (<code>GASH-E502</code>), opens up to 8 loopback tunnels, deploys hardened GrabLab CMS + Grex Theme Builder + Groxy AI stacks, and rolls out verified <code>Site DNA</code> bundles with 1-click rollback.</li>
   </ul>
 
   <h2>2. Quickstart: Starting Gashboard Locally</h2>
   <ol>
-    <li><strong>Start the Local Go SSH Bridge (Terminal 1):</strong>
+    <li><strong>Start the Local Go SSH &amp; DB Bridge (Terminal 1):</strong>
       <pre>set GASHBOARD_BRIDGE_TOKEN=replace-with-random-secret
-gashboard-ssh-windows-amd64.exe --listen 127.0.0.1:9391 --known-hosts %USERPROFILE%\\.ssh\\known_hosts</pre>
+gashboard-ssh-windows-amd64.exe --listen 127.0.0.1:9391 --known-hosts %USERPROFILE%\\.ssh\\known_hosts --sqlite-root storage</pre>
     </li>
-    <li><strong>Initialize Local SQLite Vault &amp; Start Gashboard (Terminal 2):</strong>
-      <pre>grab migrate --db-config grab.data.json --allow-db main:migrate migrations\\001_gashboard_schema.grab
+    <li><strong>Initialize / Upgrade Local SQLite Vault &amp; Start Gashboard (Terminal 2):</strong>
+      <pre>grab migrate --db-config grab.data.json --allow-db main:migrate migrations\\002_db_manager_and_theme.grab
 set GASHBOARD_MASTER_KEY=replace-with-strong-passphrase
 set GASHBOARD_BRIDGE_URL=http://127.0.0.1:9391
 grab serve --addr 127.0.0.1:9390 --allow-scripts --static public ^
@@ -111,11 +111,12 @@ grab serve --addr 127.0.0.1:9390 --allow-scripts --static public ^
   </ol>
 
   <h2>3. Daily Operator Workflows</h2>
-  <h3>Adding a VPS Server Safely</h3>
-  <p>Enter your server label, SSH host/IP, port, and OpenSSH <code>SHA256:...</code> fingerprint from <code>ssh-keygen -lf /etc/ssh/ssh_host_ed25519_key.pub</code>. Gashboard pins the fingerprint and rejects any impostor server with code <code>GASH-E502</code>.</p>
+  <h3>Switching Light &amp; Dark Themes</h3>
+  <p>Click the <strong>Switch to Dark Theme</strong> / <strong>Switch to Light Theme</strong> button in the header. Gashboard stores the preference in SQLite and renders <code>data-grex-theme</code> server-side so refreshes apply your theme immediately with zero flash.</p>
 
-  <h3>Opening a Private Database Tunnel</h3>
-  <p>Select PostgreSQL, MariaDB, or Redis and click <strong>Open Secure DB Tunnel</strong>. Gashboard binds strictly to <code>127.0.0.1:&lt;local_port&gt;</code> (capped at 8 active tunnels) and displays a password-free connection command such as <code>psql -h 127.0.0.1 -p 15432 -U &lt;db_user&gt; &lt;database&gt;</code>.</p>
+  <h3>Browsing Databases Safely Without Exposing Public Ports</h3>
+  <p>Pick a local confined SQLite file or open an encrypted <code>127.0.0.1</code> PostgreSQL/MariaDB SSH tunnel first, then choose that target in the <strong>Visual Database Manager</strong> panel. Use <strong>Load Schema</strong> to inspect columns, indexes, and foreign keys, paginate up to 100 rows per page, or run a read-only <code>SELECT</code> / <code>EXPLAIN</code> query.</p>
+  <p>To modify data or structure, click <strong>Preview &amp; Create Pre-Mutation Snapshot</strong> first, verify the plain-English summary and SHA-256 snapshot digest, and then click <strong>Approve &amp; Execute Write</strong>. If anything looks wrong afterward, click <strong>1-Click Restore Snapshot</strong> to revert atomically.</p>
 
   <h3>Deploying &amp; Rolling Back Site DNA</h3>
   <p>Paste a portable Groxy AI <code>Site DNA</code> JSON bundle, click <strong>Validate Site DNA &amp; Lockfile Diff</strong>, inspect the preview card, and click <strong>Approve &amp; Push Zero-Downtime Rollout</strong>. A single-use <code>approval_token</code> is consumed, a Pre-Deploy Snapshot is saved automatically, and <strong>1-Click Rollback</strong> restores the previous known-good state with <code>/_ready</code> HTTP <code>200</code> verification.</p>
@@ -176,7 +177,7 @@ def render_pdf(browser_bin: str, html_path: Path, pdf_path: Path):
 
 def main():
     parser = argparse.ArgumentParser(description="Generate Gashboard HTML & PDF walkthrough release guide.")
-    parser.add_argument("--version", default="0.1.0", help="Release version without leading v (e.g. 0.1.0)")
+    parser.add_argument("--version", default="0.2.0", help="Release version without leading v (e.g. 0.2.0)")
     args = parser.parse_args()
     version = args.version.lstrip("v")
 
